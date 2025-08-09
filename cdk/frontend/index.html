@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8" />
+  <title>Multiplayer Turn-Based Counter Game</title>
+  <style>
+    body { 
+      font-family: sans-serif; 
+      text-align: center; 
+      padding: 20px; 
+      max-width: 600px;
+      margin: 0 auto;
+    }
+    .game-container {
+      border: 2px solid #333;
+      border-radius: 10px;
+      padding: 20px;
+      margin: 20px 0;
+    }
+    button {
+      padding: 10px 20px;
+      font-size: 16px;
+      margin: 5px;
+      cursor: pointer;
+    }
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    .status {
+      padding: 10px;
+      background: #f0f0f0;
+      border-radius: 5px;
+      margin: 10px 0;
+    }
+    .player-indicator {
+      display: inline-block;
+      padding: 5px 10px;
+      border-radius: 5px;
+      font-weight: bold;
+    }
+    .player1 { background: #ff9999; }
+    .player2 { background: #9999ff; }
+    .current-turn { border: 3px solid #00ff00; }
+    #gameId {
+      font-family: monospace;
+      background: #f0f0f0;
+      padding: 5px;
+      border-radius: 3px;
+    }
+  </style>
+</head>
+<body>
+  <h1>Multiplayer Turn-Based Counter Game</h1>
+  
+  <div id="setup">
+    <h2>Start or Join Game</h2>
+    <button id="createGame">Create New Game</button>
+    <br><br>
+    <input type="text" id="joinGameId" placeholder="Enter Game ID to join">
+    <button id="joinGame">Join Game</button>
+  </div>
+
+  <div id="gameArea" style="display: none;">
+    <div class="status">
+      Game ID: <span id="gameId"></span>
+      <button id="copyGameId">Copy</button>
+    </div>
+    
+    <div class="game-container">
+      <h3>Game Status</h3>
+      <p>You are: <span id="playerRole" class="player-indicator"></span></p>
+      <p>Current Turn: <span id="currentTurn" class="player-indicator"></span></p>
+      <p>Counter: <span id="counter" style="font-size: 24px; font-weight: bold;">0</span></p>
+      <p>Target: <span id="target">5</span></p>
+      
+      <button id="takeTurn" disabled>Take Turn</button>
+      
+      <div id="winner" style="display: none; margin-top: 20px;">
+        <h2 style="color: green;">🎉 <span id="winnerName"></span> Wins! 🎉</h2>
+        <button id="newGame">Start New Game</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Configuration
+    const API_ENDPOINT = 'https://wdmfu2wflrhxbi3hhvaqmk64re.appsync-api.us-east-2.amazonaws.com/graphql';
+    const API_KEY = 'da2-4kwhajemrzbojl4vs7j7bjih5a';
+    
+    let gameId = null;
+    let playerNumber = null;
+    let gameState = null;
+    let subscription = null;
+
+    // Simple GraphQL client
+    async function graphqlRequest(query, variables = {}) {
+      const response = await fetch(API_ENDPOINT, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': API_KEY
+        },
+        body: JSON.stringify({ query, variables })
+      });
+      const result = await response.json();
+      if (result.errors) {
+        console.error('GraphQL errors:', result.errors);
+        throw new Error(result.errors[0].message);
+      }
+      return result.data;
+    }
+
+    // Create new game
+    document.getElementById('createGame').addEventListener('click', async () => {
+      try {
+        const mutation = `
+          mutation CreateGame($input: CreateGameInput!) {
+            createGame(input: $input) {
+              gameId
+              player1
+              gameState {
+                counter
+                gameActive
+                currentTurn
+              }
+            }
+          }
+        `;
+        
+        const playerId = 'player-' + Math.random().toString(36).substr(2, 9);
+        const data = await graphqlRequest(mutation, {
+          input: {
+            player1: playerId,
+            gameState: {
+              counter: 0,
+              gameActive: true,
+              currentTurn: 1
+            }
+          }
+        });
+        
+        gameId = data.createGame.gameId;
+        playerNumber = 1;
+        localStorage.setItem('playerId', playerId);
+        
+        document.getElementById('setup').style.display = 'none';
+        document.getElementById('gameArea').style.display = 'block';
+        document.getElementById('gameId').textContent = gameId;
+        document.getElementById('playerRole').textContent = 'Player 1';
+        document.getElementById('playerRole').className = 'player-indicator player1';
+        
+        startGame();
+        subscribeToUpdates();
+      } catch (error) {
+        alert('Failed to create game: ' + error.message);
+      }
+    });
+
+    // Join existing game
+    document.getElementById('joinGame').addEventListener('click', async () => {
+      const inputGameId = document.getElementById('joinGameId').value.trim();
+      if (!inputGameId) {
+        alert('Please enter a game ID');
+        return;
+      }
+      
+      try {
+        const mutation = `
+          mutation JoinGame($gameId: ID!, $player2: String!) {
+            joinGame(gameId: $gameId, player2: $player2) {
+              gameId
+              player1
+              player2
+              gameState {
+                counter
+                gameActive
+                currentTurn
+              }
+            }
+          }
+        `;
+        
+        const playerId = 'player-' + Math.random().toString(36).substr(2, 9);
+        const data = await graphqlRequest(mutation, {
+          gameId: inputGameId,
+          player2: playerId
+        });
+        
+        gameId = inputGameId;
+        playerNumber = 2;
+        localStorage.setItem('playerId', playerId);
+        
+        document.getElementById('setup').style.display = 'none';
+        document.getElementById('gameArea').style.display = 'block';
+        document.getElementById('gameId').textContent = gameId;
+        document.getElementById('playerRole').textContent = 'Player 2';
+        document.getElementById('playerRole').className = 'player-indicator player2';
+        
+        startGame();
+        subscribeToUpdates();
+      } catch (error) {
+        alert('Failed to join game: ' + error.message);
+      }
+    });
+
+    // Take turn
+    document.getElementById('takeTurn').addEventListener('click', async () => {
+      if (!gameState || !gameState.gameActive) return;
+      
+      try {
+        const newCounter = gameState.counter + 1;
+        const isWin = newCounter >= parseInt(document.getElementById('target').textContent);
+        
+        const mutation = `
+          mutation UpdateGame($gameId: ID!, $state: GameStateInput!, $currentPlayer: Int!) {
+            updateGame(gameId: $gameId, state: $state, currentPlayer: $currentPlayer) {
+              gameState {
+                counter
+                gameActive
+                currentTurn
+              }
+            }
+          }
+        `;
+        
+        await graphqlRequest(mutation, {
+          gameId: gameId,
+          state: {
+            counter: newCounter,
+            gameActive: !isWin,
+            currentTurn: isWin ? playerNumber : (playerNumber === 1 ? 2 : 1)
+          },
+          currentPlayer: playerNumber
+        });
+      } catch (error) {
+        alert('Failed to take turn: ' + error.message);
+      }
+    });
+
+    // Start game UI
+    function startGame() {
+      updateGameState({ counter: 0, gameActive: true, currentTurn: 1 });
+    }
+
+    // Update game state
+    function updateGameState(state) {
+      gameState = state;
+      document.getElementById('counter').textContent = state.counter;
+      
+      const isMyTurn = state.currentTurn === playerNumber;
+      document.getElementById('takeTurn').disabled = !isMyTurn || !state.gameActive;
+      
+      document.getElementById('currentTurn').textContent = `Player ${state.currentTurn}`;
+      document.getElementById('currentTurn').className = `player-indicator player${state.currentTurn}`;
+      
+      if (!state.gameActive) {
+        document.getElementById('winner').style.display = 'block';
+        document.getElementById('winnerName').textContent = `Player ${state.currentTurn}`;
+        document.getElementById('takeTurn').style.display = 'none';
+      }
+    }
+
+    // Copy game ID
+    document.getElementById('copyGameId').addEventListener('click', () => {
+      navigator.clipboard.writeText(gameId);
+      alert('Game ID copied to clipboard!');
+    });
+
+    // New game
+    document.getElementById('newGame').addEventListener('click', () => {
+      location.reload();
+    });
+
+    // Subscribe to game updates (simplified - in production use AWS Amplify)
+    function subscribeToUpdates() {
+      // Poll for updates every 2 seconds (simplified approach)
+      setInterval(async () => {
+        try {
+          const query = `
+            query GetGame($gameId: ID!) {
+              getGame(gameId: $gameId) {
+                gameState {
+                  counter
+                  gameActive
+                  currentTurn
+                }
+              }
+            }
+          `;
+          
+          const data = await graphqlRequest(query, { gameId });
+          if (data.getGame) {
+            updateGameState(data.getGame.gameState);
+          }
+        } catch (error) {
+          console.error('Failed to fetch game state:', error);
+        }
+      }, 2000);
+    }
+  </script>
+</body>
+</html>

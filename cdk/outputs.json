@@ -1,0 +1,8 @@
+{
+  "MultiplayerGameStack": {
+    "APIKey": "da2-4kwhajemrzbojl4vs7j7bjih5a",
+    "WebsiteURL": "https://d17uiucy3a9bfl.cloudfront.net",
+    "S3BucketName": "multiplayergamestack-gamewebsitebucket2c6eecab-065imhplkkku",
+    "GraphQLEndpoint": "https://wdmfu2wflrhxbi3hhvaqmk64re.appsync-api.us-east-2.amazonaws.com/graphql"
+  }
+}

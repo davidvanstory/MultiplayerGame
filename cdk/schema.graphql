@@ -1,0 +1,43 @@
+type Game {
+  gameId: ID!
+  player1: String
+  player2: String
+  gameState: GameState!
+  currentPlayer: Int!
+  winner: String
+  createdAt: String!
+  lastMove: String!
+}
+
+type GameState {
+  counter: Int!
+  gameActive: Boolean!
+  currentTurn: Int!
+}
+
+input GameStateInput {
+  counter: Int!
+  gameActive: Boolean!
+  currentTurn: Int!
+}
+
+input CreateGameInput {
+  player1: String!
+  gameState: GameStateInput!
+}
+
+type Query {
+  getGame(gameId: ID!): Game
+}
+
+type Mutation {
+  createGame(input: CreateGameInput!): Game!
+  joinGame(gameId: ID!, player2: String!): Game!
+  updateGame(gameId: ID!, state: GameStateInput!, currentPlayer: Int!): Game!
+  convertToMultiplayer(gameHtml: String!): String!
+}
+
+type Subscription {
+  onGameUpdate(gameId: ID!): Game
+    @aws_subscribe(mutations: ["updateGame", "joinGame"])
+}
