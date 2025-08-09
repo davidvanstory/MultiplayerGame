@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Turn-Based Counter Game (Multiplayer)</title>
+    <style>
+        body { font-family: sans-serif; text-align: center; padding: 20px; }
+        #log { width: 100%; height: 200px; margin-top: 10px; }
+        button:disabled { background-color: gray; }
+        button:enabled { background-color: green; }
+    </style>
+</head>
+<body>
+    <h1>Turn-Based Counter Game (Multiplayer)</h1>
+    <p id="playerInfo">You are Player: <span id="player">?</span></p>
+    <p>Counter: <span id="counter">0</span></p>
+    <button id="takeTurn" disabled>Take Turn</button>
+    <p id="turnStatus">⏳ Connecting...</p>
+    <textarea id="log" placeholder="Game log will appear here..." readonly></textarea>
+
+    <script>
+        const ws = new WebSocket('ws://localhost:3001');
+        let yourPlayerId = null;
+        let currentPlayer = null;
+        let counter = 0;
+        const target = 5;
+
+        const playerEl = document.getElementById('player');
+        const counterEl = document.getElementById('counter');
+        const takeTurnBtn = document.getElementById('takeTurn');
+        const turnStatusEl = document.getElementById('turnStatus');
+
+        ws.onopen = () => {
+            logMessage('[Player ?] Connected to server');
+        };
+
+        ws.onmessage = (event) => {
+            const message = JSON.parse(event.data);
+            
+            // Only set yourPlayerId if it's provided (initial connection)
+            if (message.yourPlayerId && yourPlayerId === null) {
+                yourPlayerId = message.yourPlayerId;
+                playerEl.textContent = yourPlayerId;
+                logMessage(`[Player ${yourPlayerId}] You are assigned as Player ${yourPlayerId}`);
+            }
+            
+            // Always update game state
+            currentPlayer = message.currentPlayer;
+            counter = message.counter;
+            counterEl.textContent = counter;
+
+            if (message.winner) {
+                alert(`Player ${message.winner} wins!`);
+                logMessage(`[Player ${yourPlayerId}] Player ${message.winner} wins!`);
+            }
+
+            updateTurnStatus();
+            logMessage(`[Player ${yourPlayerId}] received update: counter=${counter}, currentPlayer=${currentPlayer}`);
+        };
+
+        ws.onclose = () => {
+            logMessage(`[Player ${yourPlayerId || '?'}] Disconnected from server`);
+        };
+
+        takeTurnBtn.addEventListener('click', () => {
+            logMessage(`[Player ${yourPlayerId}] clicked take turn`);
+            ws.send(JSON.stringify({ type: 'takeTurn' }));
+        });
+
+        function updateTurnStatus() {
+            if (currentPlayer === yourPlayerId) {
+                turnStatusEl.textContent = "🟢 It's YOUR turn!";
+                turnStatusEl.style.color = "green";
+                takeTurnBtn.disabled = false;
+            } else if (yourPlayerId) {
+                turnStatusEl.textContent = `🔴 Wait for Player ${currentPlayer}'s turn`;
+                turnStatusEl.style.color = "red";
+                takeTurnBtn.disabled = true;
+            } else {
+                turnStatusEl.textContent = "⏳ Connecting...";
+                turnStatusEl.style.color = "orange";
+                takeTurnBtn.disabled = true;
+            }
+        }
+
+        function logMessage(text) {
+            const logEl = document.getElementById('log');
+            logEl.value += text + '\n';
+            logEl.scrollTop = logEl.scrollHeight; // Auto-scroll to the bottom
+        }
+
+        function resetGame() {
+            // Game resets automatically on server after win
+            // No need to send reset message
+        }
+    </script>
+</body>
+</html>

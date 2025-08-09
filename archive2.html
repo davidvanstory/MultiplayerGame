@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Turn-Based Counter Game (Multiplayer)</title>
+  <style>
+    body { font-family: sans-serif; text-align: center; padding: 20px; }
+    #log { width: 100%; height: 200px; margin-top: 10px; }
+  </style>
+</head>
+<body>
+  <h1>Turn-Based Counter Game (Multiplayer)</h1>
+  <p><strong>You are Player: <span id="myPlayer">?</span></strong></p>
+  <p>Current Player: <span id="player">1</span></p>
+  <p>Counter: <span id="counter">0</span></p>
+  <button id="takeTurn">Take Turn</button>
+  <p id="turnStatus">Connecting...</p>
+
+  <hr>
+  <textarea id="log" placeholder="Log will appear here..."></textarea>
+
+  <script>
+    const playerEl = document.getElementById('player');
+    const counterEl = document.getElementById('counter');
+    const myPlayerEl = document.getElementById('myPlayer');
+    const turnStatusEl = document.getElementById('turnStatus');
+    const takeTurnBtn = document.getElementById('takeTurn');
+    const logEl = document.getElementById('log');
+
+    let currentPlayer = 1;
+    let counter = 0;
+    let myPlayerId = null;
+    const target = 5;
+    let ws;
+
+    // Connect to WebSocket server
+    function connectWebSocket() {
+      ws = new WebSocket('ws://localhost:3001');
+
+      ws.onopen = () => {
+        log('[Player ?] Connected to the server');
+      };
+
+      ws.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+        log(`[Player ${myPlayerId || '?'}] Received: ${JSON.stringify(data)}`);
+        
+        // Handle player assignment and game state
+        if (data.yourPlayerId) {
+          myPlayerId = data.yourPlayerId;
+          myPlayerEl.textContent = myPlayerId;
+          log(`[Player ${myPlayerId}] You are assigned as Player ${myPlayerId}`);
+        }
+        
+        // Update game state from server
+        counter = data.counter;
+        currentPlayer = data.currentPlayer;
+        
+        // Check for winner
+        if (data.winner) {
+          alert(`Player ${data.winner} wins!`);
+          log(`[Player ${myPlayerId}] Player ${data.winner} wins!`);
+        }
+        
+        updateUI();
+      };
+
+      ws.onclose = () => {
+        log('Disconnected from the server');
+      };
+    }
+
+    function log(message) {
+      logEl.value += message + '\n';
+      logEl.scrollTop = logEl.scrollHeight;
+    }
+
+    function updateUI() {
+      playerEl.textContent = currentPlayer;
+      counterEl.textContent = counter;
+      
+      // Update turn status and button state
+      if (myPlayerId === currentPlayer) {
+        turnStatusEl.textContent = "🟢 It's YOUR turn!";
+        turnStatusEl.style.color = "green";
+        takeTurnBtn.disabled = false;
+        takeTurnBtn.style.backgroundColor = "#4CAF50";
+      } else if (myPlayerId) {
+        turnStatusEl.textContent = `🔴 Wait for Player ${currentPlayer}'s turn`;
+        turnStatusEl.style.color = "red"; 
+        takeTurnBtn.disabled = true;
+        takeTurnBtn.style.backgroundColor = "#cccccc";
+      } else {
+        turnStatusEl.textContent = "⏳ Connecting...";
+        turnStatusEl.style.color = "orange";
+        takeTurnBtn.disabled = true;
+      }
+    }
+
+    function resetGame() {
+      counter = 0;
+      currentPlayer = 1;
+      updateUI();
+    }
+
+    takeTurnBtn.addEventListener('click', () => {
+      log(`[Player ${myPlayerId}] Take turn button clicked. Current player: ${currentPlayer}, My ID: ${myPlayerId}`);
+      
+      if (myPlayerId === currentPlayer) {
+        log(`[Player ${myPlayerId}] Sending takeTurn message to server`);
+        ws.send(JSON.stringify({ type: 'takeTurn' }));
+      } else {
+        log(`[Player ${myPlayerId}] Button click ignored - not my turn!`);
+      }
+    });
+
+    // Start the WebSocket connection
+    connectWebSocket();
+  </script>
+</body>
+</html>

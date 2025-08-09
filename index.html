@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8" />
+  <title>Turn-Based Counter Game</title>
+  <style>
+    body { font-family: sans-serif; text-align: center; padding: 20px; }
+    #log { width: 100%; height: 200px; margin-top: 10px; }
+  </style>
+</head>
+<body>
+  <h1>Turn-Based Counter Game (Single Player)</h1>
+  <p>Current Player: <span id="player">1</span></p>
+  <p>Counter: <span id="counter">0</span></p>
+  <button id="takeTurn">Take Turn</button>
+
+  <hr>
+  <button id="generateMultiplayer">Generate Multiplayer Version</button>
+  <textarea id="log" placeholder="Multiplayer HTML will appear here..."></textarea>
+
+  <script>
+    let currentPlayer = 1;
+    let counter = 0;
+    const target = 5;
+
+    const playerEl = document.getElementById('player');
+    const counterEl = document.getElementById('counter');
+    const takeTurnBtn = document.getElementById('takeTurn');
+
+    takeTurnBtn.addEventListener('click', () => {
+      counter++;
+      counterEl.textContent = counter;
+      if (counter >= target) {
+        alert(`Player ${currentPlayer} wins!`);
+        counter = 0;
+        currentPlayer = 1;
+      } else {
+        currentPlayer = currentPlayer === 1 ? 2 : 1;
+      }
+      playerEl.textContent = currentPlayer;
+    });
+
+    // Generate Multiplayer
+    document.getElementById('generateMultiplayer').addEventListener('click', async () => {
+      const htmlSource = document.documentElement.outerHTML;
+      const res = await fetch('/api/convert', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ gameHtml: htmlSource })
+      });
+
+      const logEl = document.getElementById('log');
+      logEl.value = '';
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        logEl.value += decoder.decode(value);
+        logEl.scrollTop = logEl.scrollHeight;
+      }
+    });
+  </script>
+</body>
+</html>
