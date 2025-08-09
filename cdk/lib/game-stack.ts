@@ -79,10 +79,23 @@ export class GameStack extends cdk.Stack {
     gameDataSource.createResolver('CreateGameResolver', {
       typeName: 'Mutation',
       fieldName: 'createGame',
-      requestMappingTemplate: appsync.MappingTemplate.dynamoDbPutItem(
-        appsync.PrimaryKey.partition('gameId').auto(),
-        appsync.Values.projecting('input')
-      ),
+      requestMappingTemplate: appsync.MappingTemplate.fromString(`
+        {
+          "version": "2017-02-28",
+          "operation": "PutItem",
+          "key": {
+            "gameId": $util.dynamodb.toDynamoDBJson($ctx.args.input.gameId)
+          },
+          "attributeValues": {
+            "player1": $util.dynamodb.toDynamoDBJson($ctx.args.input.player1),
+            "player2": $util.dynamodb.toDynamoDBJson(null),
+            "gameState": $util.dynamodb.toDynamoDBJson($ctx.args.input.gameState),
+            "currentPlayer": $util.dynamodb.toDynamoDBJson(1),
+            "createdAt": $util.dynamodb.toDynamoDBJson($util.time.nowISO8601()),
+            "lastMove": $util.dynamodb.toDynamoDBJson($util.time.nowISO8601())
+          }
+        }
+      `),
       responseMappingTemplate: appsync.MappingTemplate.dynamoDbResultItem(),
     });
 
@@ -90,6 +103,28 @@ export class GameStack extends cdk.Stack {
       typeName: 'Query',
       fieldName: 'getGame',
       requestMappingTemplate: appsync.MappingTemplate.dynamoDbGetItem('gameId', 'gameId'),
+      responseMappingTemplate: appsync.MappingTemplate.dynamoDbResultItem(),
+    });
+
+    gameDataSource.createResolver('JoinGameResolver', {
+      typeName: 'Mutation',
+      fieldName: 'joinGame',
+      requestMappingTemplate: appsync.MappingTemplate.fromString(`
+        {
+          "version": "2017-02-28",
+          "operation": "UpdateItem",
+          "key": {
+            "gameId": $util.dynamodb.toDynamoDBJson($ctx.args.gameId)
+          },
+          "update": {
+            "expression": "SET player2 = :player2, lastMove = :time",
+            "expressionValues": {
+              ":player2": $util.dynamodb.toDynamoDBJson($ctx.args.player2),
+              ":time": $util.dynamodb.toDynamoDBJson($util.time.nowISO8601())
+            }
+          }
+        }
+      `),
       responseMappingTemplate: appsync.MappingTemplate.dynamoDbResultItem(),
     });
 

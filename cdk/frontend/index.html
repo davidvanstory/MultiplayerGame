@@ -93,8 +93,9 @@
     let gameState = null;
     let subscription = null;
 
-    // Simple GraphQL client
+    // Simple GraphQL client with error logging
     async function graphqlRequest(query, variables = {}) {
+      console.log('GraphQL Request:', { query: query.substring(0, 100), variables });
       const response = await fetch(API_ENDPOINT, {
         method: 'POST',
         headers: {
@@ -104,9 +105,12 @@
         body: JSON.stringify({ query, variables })
       });
       const result = await response.json();
+      console.log('GraphQL Response:', result);
       if (result.errors) {
         console.error('GraphQL errors:', result.errors);
-        throw new Error(result.errors[0].message);
+        const errorMsg = result.errors[0].message || 'Unknown GraphQL error';
+        alert('API Error: ' + errorMsg);
+        throw new Error(errorMsg);
       }
       return result.data;
     }
@@ -128,9 +132,16 @@
           }
         `;
         
+        // Generate unique game ID
+        const newGameId = crypto.randomUUID ? crypto.randomUUID() : 
+          'game-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
         const playerId = 'player-' + Math.random().toString(36).substr(2, 9);
+        
+        console.log('Creating game with ID:', newGameId);
+        
         const data = await graphqlRequest(mutation, {
           input: {
+            gameId: newGameId,
             player1: playerId,
             gameState: {
               counter: 0,
@@ -159,13 +170,16 @@
 
     // Join existing game
     document.getElementById('joinGame').addEventListener('click', async () => {
+      console.log('Join game button clicked');
       const inputGameId = document.getElementById('joinGameId').value.trim();
+      console.log('Game ID entered:', inputGameId);
       if (!inputGameId) {
         alert('Please enter a game ID');
         return;
       }
       
       try {
+        console.log('Attempting to join game:', inputGameId);
         const mutation = `
           mutation JoinGame($gameId: ID!, $player2: String!) {
             joinGame(gameId: $gameId, player2: $player2) {

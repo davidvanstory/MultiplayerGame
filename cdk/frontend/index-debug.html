@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8" />
+  <title>Multiplayer Game - DEBUG MODE</title>
+  <style>
+    body { 
+      font-family: sans-serif; 
+      text-align: center; 
+      padding: 20px; 
+      max-width: 800px;
+      margin: 0 auto;
+    }
+    .debug-panel {
+      background: #333;
+      color: #0f0;
+      padding: 10px;
+      margin: 20px 0;
+      text-align: left;
+      font-family: monospace;
+      font-size: 12px;
+      max-height: 200px;
+      overflow-y: auto;
+      border-radius: 5px;
+    }
+    .debug-entry {
+      margin: 2px 0;
+      padding: 2px;
+    }
+    .error { color: #f00; }
+    .success { color: #0f0; }
+    .info { color: #ff0; }
+    button {
+      padding: 10px 20px;
+      font-size: 16px;
+      margin: 5px;
+      cursor: pointer;
+    }
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+  </style>
+</head>
+<body>
+  <h1>🐛 DEBUG MODE - Multiplayer Game</h1>
+  
+  <div class="debug-panel" id="debugLog">
+    <div class="debug-entry info">Debug console initialized...</div>
+  </div>
+
+  <div id="setup">
+    <h2>Start or Join Game</h2>
+    <button id="createGame">Create New Game</button>
+    <br><br>
+    <input type="text" id="joinGameId" placeholder="Enter Game ID to join">
+    <button id="joinGame">Join Game</button>
+    <br><br>
+    <button id="testApi">Test API Connection</button>
+  </div>
+
+  <div id="gameArea" style="display: none;">
+    <div style="background: #f0f0f0; padding: 10px; margin: 10px 0;">
+      Game ID: <span id="gameId" style="font-family: monospace;"></span>
+      <button id="copyGameId">Copy</button>
+      <button id="inspectState">Inspect State</button>
+    </div>
+    
+    <div style="border: 2px solid #333; padding: 20px; margin: 20px 0;">
+      <p>You are: <span id="playerRole"></span></p>
+      <p>Current Turn: <span id="currentTurn"></span></p>
+      <p>Counter: <span id="counter" style="font-size: 24px;">0</span> / 5</p>
+      <button id="takeTurn" disabled>Take Turn</button>
+      <button id="forceRefresh">Force Refresh</button>
+    </div>
+  </div>
+
+  <script>
+    // Configuration
+    const API_ENDPOINT = 'https://wdmfu2wflrhxbi3hhvaqmk64re.appsync-api.us-east-2.amazonaws.com/graphql';
+    const API_KEY = 'da2-4kwhajemrzbojl4vs7j7bjih5a';
+    
+    let gameId = null;
+    let playerNumber = null;
+    let gameState = null;
+    let pollInterval = null;
+
+    // Debug logging
+    function debug(message, type = 'info') {
+      const log = document.getElementById('debugLog');
+      const entry = document.createElement('div');
+      entry.className = `debug-entry ${type}`;
+      const timestamp = new Date().toLocaleTimeString();
+      entry.textContent = `[${timestamp}] ${message}`;
+      log.appendChild(entry);
+      log.scrollTop = log.scrollHeight;
+      console.log(`[${type.toUpperCase()}]`, message);
+    }
+
+    // GraphQL request with error handling
+    async function graphqlRequest(query, variables = {}) {
+      debug(`Sending GraphQL request...`, 'info');
+      debug(`Query: ${query.substring(0, 50)}...`, 'info');
+      debug(`Variables: ${JSON.stringify(variables)}`, 'info');
+      
+      try {
+        const response = await fetch(API_ENDPOINT, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-api-key': API_KEY
+          },
+          body: JSON.stringify({ query, variables })
+        });
+        
+        const result = await response.json();
+        
+        if (result.errors) {
+          debug(`GraphQL errors: ${JSON.stringify(result.errors)}`, 'error');
+          throw new Error(result.errors[0].message);
+        }
+        
+        debug(`Response received: ${JSON.stringify(result.data).substring(0, 100)}...`, 'success');
+        return result.data;
+      } catch (error) {
+        debug(`Request failed: ${error.message}`, 'error');
+        throw error;
+      }
+    }
+
+    // Test API connection
+    document.getElementById('testApi').addEventListener('click', async () => {
+      debug('Testing API connection...', 'info');
+      try {
+        const query = `
+          query TestConnection {
+            __typename
+          }
+        `;
+        await graphqlRequest(query);
+        debug('API connection successful!', 'success');
+        alert('API connection works!');
+      } catch (error) {
+        debug(`API connection failed: ${error.message}`, 'error');
+        alert('API connection failed! Check console.');
+      }
+    });
+
+    // Join game
+    document.getElementById('joinGame').addEventListener('click', async () => {
+      debug('Join game button clicked', 'info');
+      const inputGameId = document.getElementById('joinGameId').value.trim();
+      debug(`Game ID entered: "${inputGameId}"`, 'info');
+      
+      if (!inputGameId) {
+        debug('No game ID provided!', 'error');
+        alert('Please enter a game ID');
+        return;
+      }
+      
+      debug(`Attempting to join game: ${inputGameId}`, 'info');
+      try {
+        const mutation = `
+          mutation JoinGame($gameId: ID!, $player2: String!) {
+            joinGame(gameId: $gameId, player2: $player2) {
+              gameId
+              player1
+              player2
+              gameState {
+                counter
+                gameActive
+                currentTurn
+              }
+            }
+          }
+        `;
+        
+        const playerId = 'player-' + Math.random().toString(36).substr(2, 9);
+        debug(`Generated Player 2 ID: ${playerId}`, 'info');
+        
+        const data = await graphqlRequest(mutation, {
+          gameId: inputGameId,
+          player2: playerId
+        });
+        
+        if (!data || !data.joinGame) {
+          debug('No data returned from joinGame mutation!', 'error');
+          throw new Error('Failed to join game - no data returned');
+        }
+        
+        gameId = inputGameId;
+        playerNumber = 2;
+        debug(`Successfully joined game as Player 2! Game ID: ${gameId}`, 'success');
+        
+        document.getElementById('setup').style.display = 'none';
+        document.getElementById('gameArea').style.display = 'block';
+        document.getElementById('gameId').textContent = gameId;
+        document.getElementById('playerRole').textContent = 'Player 2';
+        
+        startPolling();
+      } catch (error) {
+        debug(`Failed to join game: ${error.message}`, 'error');
+        debug(`Full error: ${JSON.stringify(error)}`, 'error');
+        alert('Failed to join game! Check debug log.');
+      }
+    });
+
+    // Create game
+    document.getElementById('createGame').addEventListener('click', async () => {
+      debug('Creating new game...', 'info');
+      try {
+        const mutation = `
+          mutation CreateGame($input: CreateGameInput!) {
+            createGame(input: $input) {
+              gameId
+              player1
+              gameState {
+                counter
+                gameActive
+                currentTurn
+              }
+            }
+          }
+        `;
+        
+        // Generate unique game ID
+        const newGameId = crypto.randomUUID ? crypto.randomUUID() : 
+          'game-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
+        const playerId = 'player-' + Math.random().toString(36).substr(2, 9);
+        debug(`Generated game ID: ${newGameId}`, 'info');
+        debug(`Generated player ID: ${playerId}`, 'info');
+        
+        const data = await graphqlRequest(mutation, {
+          input: {
+            gameId: newGameId,
+            player1: playerId,
+            gameState: {
+              counter: 0,
+              gameActive: true,
+              currentTurn: 1
+            }
+          }
+        });
+        
+        gameId = data.createGame.gameId;
+        playerNumber = 1;
+        debug(`Game created! ID: ${gameId}`, 'success');
+        
+        document.getElementById('setup').style.display = 'none';
+        document.getElementById('gameArea').style.display = 'block';
+        document.getElementById('gameId').textContent = gameId;
+        document.getElementById('playerRole').textContent = 'Player 1';
+        
+        startPolling();
+      } catch (error) {
+        debug(`Failed to create game: ${error.message}`, 'error');
+        alert('Failed to create game! Check debug log.');
+      }
+    });
+
+    // Polling for updates
+    function startPolling() {
+      debug('Starting polling (every 2 seconds)...', 'info');
+      pollInterval = setInterval(async () => {
+        try {
+          const query = `
+            query GetGame($gameId: ID!) {
+              getGame(gameId: $gameId) {
+                gameState {
+                  counter
+                  gameActive
+                  currentTurn
+                }
+              }
+            }
+          `;
+          
+          const data = await graphqlRequest(query, { gameId });
+          if (data.getGame) {
+            updateGameState(data.getGame.gameState);
+          }
+        } catch (error) {
+          debug(`Polling error: ${error.message}`, 'error');
+        }
+      }, 2000);
+    }
+
+    // Update game state
+    function updateGameState(state) {
+      debug(`State update: counter=${state.counter}, turn=${state.currentTurn}, active=${state.gameActive}`, 'info');
+      gameState = state;
+      document.getElementById('counter').textContent = state.counter;
+      document.getElementById('currentTurn').textContent = `Player ${state.currentTurn}`;
+      
+      const isMyTurn = state.currentTurn === playerNumber;
+      document.getElementById('takeTurn').disabled = !isMyTurn || !state.gameActive;
+      
+      if (!state.gameActive && state.counter >= 5) {
+        debug(`GAME OVER! Player ${state.currentTurn} wins!`, 'success');
+        alert(`Player ${state.currentTurn} wins!`);
+        clearInterval(pollInterval);
+      }
+    }
+
+    // Inspect current state
+    document.getElementById('inspectState').addEventListener('click', () => {
+      debug(`Current state: ${JSON.stringify(gameState, null, 2)}`, 'info');
+      alert(`Game State:\n${JSON.stringify(gameState, null, 2)}`);
+    });
+
+    // Force refresh
+    document.getElementById('forceRefresh').addEventListener('click', async () => {
+      debug('Forcing state refresh...', 'info');
+      const query = `
+        query GetGame($gameId: ID!) {
+          getGame(gameId: $gameId) {
+            gameState {
+              counter
+              gameActive
+              currentTurn
+            }
+          }
+        }
+      `;
+      
+      try {
+        const data = await graphqlRequest(query, { gameId });
+        if (data.getGame) {
+          updateGameState(data.getGame.gameState);
+        }
+      } catch (error) {
+        debug(`Refresh failed: ${error.message}`, 'error');
+      }
+    });
+
+    // Take turn
+    document.getElementById('takeTurn').addEventListener('click', async () => {
+      debug(`Taking turn as Player ${playerNumber}...`, 'info');
+      try {
+        const newCounter = gameState.counter + 1;
+        const isWin = newCounter >= 5;
+        
+        const mutation = `
+          mutation UpdateGame($gameId: ID!, $state: GameStateInput!, $currentPlayer: Int!) {
+            updateGame(gameId: $gameId, state: $state, currentPlayer: $currentPlayer) {
+              gameState {
+                counter
+                gameActive
+                currentTurn
+              }
+            }
+          }
+        `;
+        
+        await graphqlRequest(mutation, {
+          gameId: gameId,
+          state: {
+            counter: newCounter,
+            gameActive: !isWin,
+            currentTurn: isWin ? playerNumber : (playerNumber === 1 ? 2 : 1)
+          },
+          currentPlayer: playerNumber
+        });
+        
+        debug('Turn taken successfully!', 'success');
+      } catch (error) {
+        debug(`Failed to take turn: ${error.message}`, 'error');
+      }
+    });
+
+    // Copy game ID
+    document.getElementById('copyGameId').addEventListener('click', () => {
+      navigator.clipboard.writeText(gameId);
+      debug(`Game ID copied: ${gameId}`, 'success');
+    });
+
+    debug('Debug interface ready!', 'success');
+    debug(`API Endpoint: ${API_ENDPOINT}`, 'info');
+  </script>
+</body>
+</html>
