@@ -2,7 +2,7 @@
 <html>
 <head>
   <meta charset="UTF-8" />
-  <title>Multiplayer Turn-Based Counter Game</title>
+  <title>Multiplayer Game Platform - AI Powered</title>
   <style>
     body { 
       font-family: sans-serif; 
@@ -33,6 +33,185 @@
       border-radius: 5px;
       margin: 10px 0;
     }
+    /* Game Generation Styles */
+    .tab-container {
+      display: flex;
+      gap: 10px;
+      margin: 20px 0;
+      border-bottom: 2px solid #ddd;
+    }
+    .tab {
+      padding: 10px 20px;
+      cursor: pointer;
+      background: #f0f0f0;
+      border: none;
+      border-radius: 5px 5px 0 0;
+      font-size: 16px;
+    }
+    .tab.active {
+      background: #667eea;
+      color: white;
+    }
+    .tab-content {
+      display: none;
+      padding: 20px;
+      background: white;
+      border-radius: 0 0 10px 10px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    }
+    .tab-content.active {
+      display: block;
+    }
+    .generation-form {
+      display: grid;
+      gap: 15px;
+      max-width: 500px;
+      margin: 0 auto;
+    }
+    .form-field {
+      display: flex;
+      flex-direction: column;
+    }
+    .form-field label {
+      margin-bottom: 5px;
+      font-weight: bold;
+    }
+    .form-field select,
+    .form-field textarea {
+      padding: 8px;
+      border: 1px solid #ddd;
+      border-radius: 5px;
+    }
+    .form-field textarea {
+      min-height: 100px;
+    }
+    .generate-btn {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      padding: 12px;
+      border: none;
+      border-radius: 5px;
+      font-size: 16px;
+      cursor: pointer;
+      font-weight: bold;
+    }
+    .generate-btn:hover {
+      opacity: 0.9;
+    }
+    .generate-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    .preview-container {
+      margin-top: 20px;
+      padding: 20px;
+      background: #f9f9f9;
+      border-radius: 10px;
+      display: none;
+    }
+    .preview-container.active {
+      display: block;
+    }
+    .preview-iframe {
+      width: 100%;
+      height: 500px;
+      border: 2px solid #ddd;
+      border-radius: 5px;
+      background: white;
+    }
+    /* Enhanced UI styles from game-creator */
+    .game-templates {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+    .template-btn {
+      padding: 15px;
+      background: #f5f5f5;
+      border: 2px solid #e0e0e0;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.3s;
+      text-align: center;
+    }
+    .template-btn:hover {
+      background: #667eea;
+      color: white;
+      border-color: #667eea;
+      transform: translateY(-2px);
+    }
+    .template-btn.selected {
+      background: #667eea;
+      color: white;
+      border-color: #667eea;
+    }
+    .template-btn .icon {
+      font-size: 24px;
+      margin-bottom: 5px;
+    }
+    .requirements-chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 10px;
+    }
+    .chip {
+      padding: 6px 12px;
+      background: #e8eaf6;
+      border-radius: 20px;
+      font-size: 13px;
+      color: #5c6bc0;
+      cursor: pointer;
+      transition: all 0.3s;
+    }
+    .chip:hover {
+      background: #5c6bc0;
+      color: white;
+    }
+    .chip.active {
+      background: #667eea;
+      color: white;
+    }
+    .loading {
+      display: none;
+      text-align: center;
+      padding: 20px;
+    }
+    .loading.active {
+      display: block;
+    }
+    .spinner {
+      display: inline-block;
+      width: 40px;
+      height: 40px;
+      border: 4px solid #f3f3f3;
+      border-top: 4px solid #667eea;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+    .status-message {
+      padding: 15px;
+      border-radius: 8px;
+      margin-top: 15px;
+      display: none;
+    }
+    .status-message.success {
+      background: #d4edda;
+      color: #155724;
+      border: 1px solid #c3e6cb;
+      display: block;
+    }
+    .status-message.error {
+      background: #f8d7da;
+      color: #721c24;
+      border: 1px solid #f5c6cb;
+      display: block;
+    }
     .player-indicator {
       display: inline-block;
       padding: 5px 10px;
@@ -51,9 +230,17 @@
   </style>
 </head>
 <body>
-  <h1>Multiplayer Turn-Based Counter Game</h1>
+  <h1>🎮 Multiplayer Game Platform - AI Powered</h1>
   
-  <div id="setup">
+  <div class="tab-container">
+    <button class="tab active" onclick="switchTab('play')">Play/Join Game</button>
+    <button class="tab" onclick="switchTab('create')">Create with AI</button>
+    <button class="tab" onclick="switchTab('convert')">Convert to Multiplayer</button>
+  </div>
+  
+  <!-- Play/Join Tab -->
+  <div id="playTab" class="tab-content active">
+    <div id="setup">
     <h2>Start or Join Game</h2>
     <button id="createGame">Create New Game</button>
     <br><br>
@@ -82,6 +269,124 @@
       </div>
     </div>
   </div>
+  </div>
+  
+  <!-- Create with AI Tab -->
+  <div id="createTab" class="tab-content">
+    <h2>🎯 Create a Game with AI</h2>
+    <div class="generation-form">
+      <div class="form-field">
+        <label>Select Game Type</label>
+        <div class="game-templates">
+          <div class="template-btn" data-type="tictactoe">
+            <div class="icon">❌</div>
+            <div>Tic Tac Toe</div>
+          </div>
+          <div class="template-btn" data-type="memory">
+            <div class="icon">🧠</div>
+            <div>Memory</div>
+          </div>
+          <div class="template-btn" data-type="puzzle">
+            <div class="icon">🧩</div>
+            <div>Puzzle</div>
+          </div>
+          <div class="template-btn" data-type="counter">
+            <div class="icon">🔢</div>
+            <div>Counter</div>
+          </div>
+          <div class="template-btn" data-type="quiz">
+            <div class="icon">❓</div>
+            <div>Quiz</div>
+          </div>
+          <div class="template-btn" data-type="snake">
+            <div class="icon">🐍</div>
+            <div>Snake</div>
+          </div>
+          <div class="template-btn" data-type="platformer">
+            <div class="icon">🏃</div>
+            <div>Platformer</div>
+          </div>
+          <div class="template-btn" data-type="custom">
+            <div class="icon">✨</div>
+            <div>Custom</div>
+          </div>
+        </div>
+      </div>
+      
+      <div class="form-field">
+        <label>Game Features</label>
+        <div class="requirements-chips">
+          <div class="chip" data-feature="multiplayer-ready">Multiplayer Ready</div>
+          <div class="chip" data-feature="scoring">Score System</div>
+          <div class="chip" data-feature="timer">Timer</div>
+          <div class="chip" data-feature="levels">Multiple Levels</div>
+          <div class="chip" data-feature="animations">Animations</div>
+          <div class="chip" data-feature="sounds">Sound Effects</div>
+          <div class="chip" data-feature="leaderboard">Leaderboard</div>
+          <div class="chip" data-feature="mobile">Mobile Optimized</div>
+        </div>
+      </div>
+      
+      <div class="form-field">
+        <label>Additional Requirements</label>
+        <textarea id="requirements" placeholder="Describe any specific features or requirements for your game..."></textarea>
+      </div>
+      
+      <div class="form-field">
+        <label>Difficulty Level</label>
+        <select id="difficulty">
+          <option value="easy">Easy - Simple mechanics</option>
+          <option value="medium" selected>Medium - Balanced gameplay</option>
+          <option value="hard">Hard - Complex challenges</option>
+        </select>
+      </div>
+      
+      <button class="generate-btn" id="generateGameBtn">🚀 Generate Game</button>
+      
+      <div class="loading" id="loadingIndicator">
+        <div class="spinner"></div>
+        <p>Creating your game... This may take a moment.</p>
+      </div>
+      
+      <div class="status-message" id="statusMessage"></div>
+    </div>
+    
+    <div class="preview-container" id="generatedPreview">
+      <h3>Generated Game Preview</h3>
+      <iframe class="preview-iframe" id="generatedGameFrame" sandbox="allow-scripts allow-same-origin"></iframe>
+      <br><br>
+      <button class="generate-btn" id="convertGeneratedBtn">🌐 Convert to Multiplayer</button>
+    </div>
+  </div>
+  
+  <!-- Convert to Multiplayer Tab -->
+  <div id="convertTab" class="tab-content">
+    <h2>🔄 Convert Single-Player Game to Multiplayer</h2>
+    <div class="generation-form">
+      <div class="form-field">
+        <label>Paste your single-player HTML game code</label>
+        <textarea id="singlePlayerHtml" placeholder="Paste your complete HTML game code here..." style="min-height: 200px;"></textarea>
+      </div>
+      
+      <button class="generate-btn" id="convertHtmlBtn">🎮 Convert to Multiplayer</button>
+      
+      <div class="loading" id="convertLoadingIndicator">
+        <div class="spinner"></div>
+        <p>Converting to multiplayer... This may take a moment.</p>
+      </div>
+      
+      <div class="status-message" id="convertStatusMessage"></div>
+    </div>
+    
+    <div class="preview-container" id="convertedPreview">
+      <h3>Multiplayer Game Preview</h3>
+      <iframe class="preview-iframe" id="convertedGameFrame"></iframe>
+      <div class="status" style="margin-top: 15px;">
+        <strong>Game URL:</strong> <a id="convertedGameUrl" href="#" target="_blank"></a>
+        <button onclick="navigator.clipboard.writeText(document.getElementById('convertedGameUrl').href)" style="margin-left: 10px;">📋 Copy URL</button>
+      </div>
+    </div>
+  </div>
 
   <script>
     // Configuration
@@ -92,6 +397,24 @@
     let playerNumber = null;
     let gameState = null;
     let subscription = null;
+    let currentGeneratedGame = null;
+    let selectedGameType = null;
+    let selectedFeatures = new Set();
+
+    // Tab switching
+    function switchTab(tabName) {
+      // Hide all tabs
+      document.querySelectorAll('.tab-content').forEach(tab => {
+        tab.classList.remove('active');
+      });
+      document.querySelectorAll('.tab').forEach(tab => {
+        tab.classList.remove('active');
+      });
+      
+      // Show selected tab
+      document.getElementById(tabName + 'Tab').classList.add('active');
+      event.target.classList.add('active');
+    }
 
     // Simple GraphQL client with error logging
     async function graphqlRequest(query, variables = {}) {
@@ -286,7 +609,7 @@
       location.reload();
     });
 
-    // Subscribe to game updates (simplified - in production use AWS Amplify)
+    // Subscribe to game updates (simplified - in production use AWS Amplayer)
     function subscribeToUpdates() {
       // Poll for updates every 2 seconds (simplified approach)
       setInterval(async () => {
@@ -311,6 +634,189 @@
           console.error('Failed to fetch game state:', error);
         }
       }, 2000);
+    }
+
+    // Template buttons for game type selection
+    document.querySelectorAll('.template-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.template-btn').forEach(b => b.classList.remove('selected'));
+        btn.classList.add('selected');
+        selectedGameType = btn.dataset.type;
+      });
+    });
+    
+    // Feature chips selection
+    document.querySelectorAll('.chip').forEach(chip => {
+      chip.addEventListener('click', () => {
+        chip.classList.toggle('active');
+        const feature = chip.dataset.feature;
+        if (selectedFeatures.has(feature)) {
+          selectedFeatures.delete(feature);
+        } else {
+          selectedFeatures.add(feature);
+        }
+      });
+    });
+    
+    // Generate game with AI
+    document.getElementById('generateGameBtn').addEventListener('click', async () => {
+      if (!selectedGameType) {
+        showStatus('Please select a game type', 'error');
+        return;
+      }
+      
+      const requirements = document.getElementById('requirements').value;
+      
+      try {
+        showLoading(true);
+        hideStatus();
+        
+        const mutation = `
+          mutation GenerateGame($gameType: String!, $requirements: AWSJSON!) {
+            generateGame(gameType: $gameType, requirements: $requirements) {
+              gameId
+              gameType
+              gameHtml
+              createdAt
+            }
+          }
+        `;
+        
+        const reqObj = {
+          description: requirements || 'Create a fun, interactive game',
+          features: Array.from(selectedFeatures),
+          difficulty: document.getElementById('difficulty').value,
+          initialState: {
+            players: {},
+            score: 0,
+            level: 1
+          }
+        };
+        
+        const data = await graphqlRequest(mutation, {
+          gameType: selectedGameType,
+          requirements: JSON.stringify(reqObj)
+        });
+        
+        if (data.generateGame) {
+          currentGeneratedGame = data.generateGame;
+          document.getElementById('generatedGameFrame').srcdoc = data.generateGame.gameHtml;
+          document.getElementById('generatedPreview').classList.add('active');
+          showStatus('Game generated successfully!', 'success');
+        }
+      } catch (error) {
+        showStatus('Failed to generate game: ' + error.message, 'error');
+      } finally {
+        showLoading(false);
+      }
+    });
+    
+    // Convert generated game to multiplayer
+    document.getElementById('convertGeneratedBtn').addEventListener('click', async () => {
+      if (!currentGeneratedGame) {
+        alert('No game to convert');
+        return;
+      }
+      
+      try {
+        document.getElementById('convertGeneratedBtn').disabled = true;
+        document.getElementById('convertGeneratedBtn').textContent = 'Converting...';
+        
+        const mutation = `
+          mutation ConvertToMultiplayer($gameId: ID!, $gameHtml: String!) {
+            convertToMultiplayer(gameId: $gameId, gameHtml: $gameHtml) {
+              gameUrl
+              gameId
+              serverEndpoint
+            }
+          }
+        `;
+        
+        const data = await graphqlRequest(mutation, {
+          gameId: currentGeneratedGame.gameId,
+          gameHtml: currentGeneratedGame.gameHtml
+        });
+        
+        if (data.convertToMultiplayer) {
+          alert(`Game converted! URL: ${data.convertToMultiplayer.gameUrl}`);
+          window.open(data.convertToMultiplayer.gameUrl, '_blank');
+        }
+      } catch (error) {
+        alert('Failed to convert game: ' + error.message);
+      } finally {
+        document.getElementById('convertGeneratedBtn').disabled = false;
+        document.getElementById('convertGeneratedBtn').textContent = 'Convert to Multiplayer';
+      }
+    });
+    
+    // Convert pasted HTML to multiplayer
+    document.getElementById('convertHtmlBtn').addEventListener('click', async () => {
+      const html = document.getElementById('singlePlayerHtml').value;
+      if (!html) {
+        alert('Please paste HTML code first');
+        return;
+      }
+      
+      try {
+        document.getElementById('convertHtmlBtn').disabled = true;
+        document.getElementById('convertHtmlBtn').textContent = 'Converting...';
+        
+        const gameId = `game-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
+        
+        const mutation = `
+          mutation ConvertToMultiplayer($gameId: ID!, $gameHtml: String!) {
+            convertToMultiplayer(gameId: $gameId, gameHtml: $gameHtml) {
+              gameUrl
+              gameId
+              serverEndpoint
+            }
+          }
+        `;
+        
+        const data = await graphqlRequest(mutation, {
+          gameId: gameId,
+          gameHtml: html
+        });
+        
+        if (data.convertToMultiplayer) {
+          document.getElementById('convertedGameFrame').src = data.convertToMultiplayer.gameUrl;
+          document.getElementById('convertedGameUrl').href = data.convertToMultiplayer.gameUrl;
+          document.getElementById('convertedGameUrl').textContent = data.convertToMultiplayer.gameUrl;
+          document.getElementById('convertedPreview').classList.add('active');
+        }
+      } catch (error) {
+        alert('Failed to convert game: ' + error.message);
+      } finally {
+        document.getElementById('convertHtmlBtn').disabled = false;
+        document.getElementById('convertHtmlBtn').textContent = '🎮 Convert to Multiplayer';
+      }
+    });
+    
+    // Helper functions for status messages
+    function showStatus(message, type) {
+      const statusEl = document.getElementById('statusMessage');
+      statusEl.textContent = message;
+      statusEl.className = `status-message ${type}`;
+      
+      if (type === 'success') {
+        setTimeout(hideStatus, 5000);
+      }
+    }
+    
+    function hideStatus() {
+      const statusEl = document.getElementById('statusMessage');
+      statusEl.className = 'status-message';
+    }
+    
+    function showLoading(show) {
+      const loading = document.getElementById('loadingIndicator');
+      if (show) {
+        loading.classList.add('active');
+        document.getElementById('generateGameBtn').disabled = true;
+      } else {
+        loading.classList.remove('active');
+        document.getElementById('generateGameBtn').disabled = false;
+      }
     }
   </script>
 </body>
