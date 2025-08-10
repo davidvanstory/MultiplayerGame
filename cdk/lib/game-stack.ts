@@ -57,15 +57,16 @@ export class GameStack extends cdk.Stack {
       memorySize: 512,
     });
 
-    // 5. AppSync API
+    // 5. AppSync API - v2.0 with gameId support - Updated 2025-08-09
     const api = new appsync.GraphqlApi(this, 'GameAPI', {
-      name: 'multiplayer-game-api',
+      name: 'multiplayer-game-api-v2',
       definition: appsync.Definition.fromFile(path.join(__dirname, '../schema.graphql')),
       authorizationConfig: {
         defaultAuthorization: {
           authorizationType: appsync.AuthorizationType.API_KEY,
           apiKeyConfig: {
             expires: cdk.Expiration.after(cdk.Duration.days(365)),
+            description: 'API Key for multiplayer game - v2.1 schema update',
           },
         },
       },
@@ -75,80 +76,134 @@ export class GameStack extends cdk.Stack {
     // 6. Connect AppSync to DynamoDB
     const gameDataSource = api.addDynamoDbDataSource('GameDataSource', gameTable);
 
-    // Create resolvers for each operation
+    // Create resolvers for each operation using JavaScript resolvers (not VTL)
     gameDataSource.createResolver('CreateGameResolver', {
       typeName: 'Mutation',
       fieldName: 'createGame',
-      requestMappingTemplate: appsync.MappingTemplate.fromString(`
-        {
-          "version": "2017-02-28",
-          "operation": "PutItem",
-          "key": {
-            "gameId": $util.dynamodb.toDynamoDBJson($ctx.args.input.gameId)
-          },
-          "attributeValues": {
-            "player1": $util.dynamodb.toDynamoDBJson($ctx.args.input.player1),
-            "player2": $util.dynamodb.toDynamoDBJson(null),
-            "gameState": $util.dynamodb.toDynamoDBJson($ctx.args.input.gameState),
-            "currentPlayer": $util.dynamodb.toDynamoDBJson(1),
-            "createdAt": $util.dynamodb.toDynamoDBJson($util.time.nowISO8601()),
-            "lastMove": $util.dynamodb.toDynamoDBJson($util.time.nowISO8601())
+      runtime: appsync.FunctionRuntime.JS_1_0_0,
+      code: appsync.Code.fromInline(`
+        import { util } from '@aws-appsync/utils';
+        
+        export function request(ctx) {
+          const now = util.time.nowISO8601();
+          return {
+            operation: 'PutItem',
+            key: {
+              gameId: util.dynamodb.toDynamoDB(ctx.args.input.gameId)
+            },
+            attributeValues: {
+              gameId: util.dynamodb.toDynamoDB(ctx.args.input.gameId),
+              player1: util.dynamodb.toDynamoDB(ctx.args.input.player1),
+              gameState: util.dynamodb.toDynamoDB(ctx.args.input.gameState),
+              currentPlayer: util.dynamodb.toDynamoDB(1),
+              createdAt: util.dynamodb.toDynamoDB(now),
+              lastMove: util.dynamodb.toDynamoDB(now)
+            }
+          };
+        }
+        
+        export function response(ctx) {
+          if (ctx.error) {
+            util.error(ctx.error.message, ctx.error.type);
           }
+          return ctx.result;
         }
       `),
-      responseMappingTemplate: appsync.MappingTemplate.dynamoDbResultItem(),
     });
 
     gameDataSource.createResolver('GetGameResolver', {
       typeName: 'Query',
       fieldName: 'getGame',
-      requestMappingTemplate: appsync.MappingTemplate.dynamoDbGetItem('gameId', 'gameId'),
-      responseMappingTemplate: appsync.MappingTemplate.dynamoDbResultItem(),
+      runtime: appsync.FunctionRuntime.JS_1_0_0,
+      code: appsync.Code.fromInline(`
+        import { util } from '@aws-appsync/utils';
+        
+        export function request(ctx) {
+          return {
+            operation: 'GetItem',
+            key: {
+              gameId: util.dynamodb.toDynamoDB(ctx.args.gameId)
+            }
+          };
+        }
+        
+        export function response(ctx) {
+          if (ctx.error) {
+            util.error(ctx.error.message, ctx.error.type);
+          }
+          return ctx.result;
+        }
+      `),
     });
 
     gameDataSource.createResolver('JoinGameResolver', {
       typeName: 'Mutation',
       fieldName: 'joinGame',
-      requestMappingTemplate: appsync.MappingTemplate.fromString(`
-        {
-          "version": "2017-02-28",
-          "operation": "UpdateItem",
-          "key": {
-            "gameId": $util.dynamodb.toDynamoDBJson($ctx.args.gameId)
-          },
-          "update": {
-            "expression": "SET player2 = :player2, lastMove = :time",
-            "expressionValues": {
-              ":player2": $util.dynamodb.toDynamoDBJson($ctx.args.player2),
-              ":time": $util.dynamodb.toDynamoDBJson($util.time.nowISO8601())
+      runtime: appsync.FunctionRuntime.JS_1_0_0,
+      code: appsync.Code.fromInline(`
+        import { util } from '@aws-appsync/utils';
+        
+        export function request(ctx) {
+          const now = util.time.nowISO8601();
+          return {
+            operation: 'UpdateItem',
+            key: {
+              gameId: util.dynamodb.toDynamoDB(ctx.args.gameId)
+            },
+            update: {
+              expression: 'SET player2 = :player2, lastMove = :time',
+              expressionValues: {
+                ':player2': util.dynamodb.toDynamoDB(ctx.args.player2),
+                ':time': util.dynamodb.toDynamoDB(now)
+              }
+            },
+            condition: {
+              expression: 'attribute_exists(gameId) AND attribute_not_exists(player2)'
             }
+          };
+        }
+        
+        export function response(ctx) {
+          if (ctx.error) {
+            util.error(ctx.error.message, ctx.error.type);
           }
+          return ctx.result;
         }
       `),
-      responseMappingTemplate: appsync.MappingTemplate.dynamoDbResultItem(),
     });
 
     gameDataSource.createResolver('UpdateGameResolver', {
       typeName: 'Mutation',
       fieldName: 'updateGame',
-      requestMappingTemplate: appsync.MappingTemplate.fromString(`
-        {
-          "version": "2017-02-28",
-          "operation": "UpdateItem",
-          "key": {
-            "gameId": $util.dynamodb.toDynamoDBJson($ctx.args.gameId)
-          },
-          "update": {
-            "expression": "SET gameState = :state, currentPlayer = :player, lastMove = :time",
-            "expressionValues": {
-              ":state": $util.dynamodb.toDynamoDBJson($ctx.args.state),
-              ":player": $util.dynamodb.toDynamoDBJson($ctx.args.currentPlayer),
-              ":time": $util.dynamodb.toDynamoDBJson($util.time.nowISO8601())
+      runtime: appsync.FunctionRuntime.JS_1_0_0,
+      code: appsync.Code.fromInline(`
+        import { util } from '@aws-appsync/utils';
+        
+        export function request(ctx) {
+          const now = util.time.nowISO8601();
+          return {
+            operation: 'UpdateItem',
+            key: {
+              gameId: util.dynamodb.toDynamoDB(ctx.args.gameId)
+            },
+            update: {
+              expression: 'SET gameState = :state, currentPlayer = :player, lastMove = :time',
+              expressionValues: {
+                ':state': util.dynamodb.toDynamoDB(ctx.args.state),
+                ':player': util.dynamodb.toDynamoDB(ctx.args.currentPlayer),
+                ':time': util.dynamodb.toDynamoDB(now)
+              }
             }
+          };
+        }
+        
+        export function response(ctx) {
+          if (ctx.error) {
+            util.error(ctx.error.message, ctx.error.type);
           }
+          return ctx.result;
         }
       `),
-      responseMappingTemplate: appsync.MappingTemplate.dynamoDbResultItem(),
     });
 
     // Connect Lambda to AppSync for AI conversion
