@@ -1,0 +1,12 @@
+{
+  "name": "ai-convert-lambda",
+  "version": "1.0.0",
+  "description": "Lambda function for AI-powered game conversion using OpenAI",
+  "main": "ai-convert.js",
+  "dependencies": {
+    "openai": "^4.67.1"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

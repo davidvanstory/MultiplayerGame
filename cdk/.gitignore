@@ -1,11 +1,16 @@
-*.js
-!jest.config.js
-*.d.ts
+# Compiled TypeScript outputs
+lib/**/*.js
+lib/**/*.d.ts
+bin/**/*.js
+bin/**/*.d.ts
+
+# Node modules
 node_modules
 
 # CDK asset staging directory
 .cdk.staging
 cdk.out
 
-
+# Environment files
+.env
 
