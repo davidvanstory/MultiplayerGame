@@ -1,36 +1,31 @@
-/**
- * AI-powered Lambda function for converting single-player games to multiplayer
- * Uses OpenAI SDK for robust API interactions with proper error handling
- */
-const { OpenAI } = require('openai');
+const https = require('https');
+const { S3Client, PutObjectCommand } = require('@aws-sdk/client-s3');
+const s3Client = new S3Client({ region: process.env.AWS_REGION || 'us-east-2' });
 
-// Initialize OpenAI client with API key from environment
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
-
-/**
- * Lambda handler function
- * @param {Object} event - Lambda event containing gameHtml in arguments
- * @returns {Promise<string>} - Converted multiplayer game HTML
- */
 exports.handler = async (event) => {
-  console.log('🚀 AI Convert Lambda started');
-  console.log('📨 Event received:', JSON.stringify(event, null, 2));
+  // Log environment variables for verification (remove after testing)
+  console.log('Environment Variables Check:');
+  console.log('WEBSITE_BUCKET:', process.env.WEBSITE_BUCKET);
+  console.log('CF_DOMAIN:', process.env.CF_DOMAIN);
+  console.log('API_ENDPOINT:', process.env.API_ENDPOINT);
+  console.log('API_KEY:', process.env.API_KEY ? 'Set (hidden)' : 'Not set');
+  console.log('OPENAI_API_KEY:', process.env.OPENAI_API_KEY ? 'Set (hidden)' : 'Not set');
   
-  try {
-    // Extract gameHtml from event (supports both AppSync and direct invocation)
-    const { gameHtml } = event.arguments || event;
-    
-    if (!gameHtml) {
-      console.error('❌ No gameHtml provided in event');
-      throw new Error('gameHtml is required');
-    }
-    
-    console.log('🎮 Game HTML length:', gameHtml.length, 'characters');
-    
-    // Construct detailed prompt for AI conversion
-    const prompt = `Convert this single-player HTML+JS turn-based counter game into a sophisticated multiplayer game using vanilla JS and WebSockets.
+  const operation = event.info ? event.info.fieldName : 'convertToMultiplayer';
+  
+  if (operation === 'generateGame') {
+    return handleGenerateGame(event);
+  } else if (operation === 'convertToMultiplayer') {
+    return handleConvertToMultiplayer(event);
+  }
+  
+  throw new Error(`Unknown operation: ${operation}`);
+};
+
+async function handleConvertToMultiplayer(event) {
+  const { gameId, gameHtml } = event.arguments || event;
+  
+  const prompt = `Convert this single-player HTML+JS turn-based counter game into a sophisticated multiplayer game using vanilla JS and WebSockets.
 
 Requirements:
 1. Two players take turns (Player 1 and Player 2)
@@ -47,54 +42,128 @@ ${gameHtml}
 
 Return ONLY the complete modified HTML file with embedded JavaScript and CSS. Make it a complete, working multiplayer game.`;
 
-    console.log('🤖 Sending request to OpenAI GPT-4o-mini');
+  try {
+    const convertedHtml = await callOpenAI(prompt);
     
-    // Make API call using OpenAI SDK with proper configuration
-    const completion = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
-      messages: [
-        { 
-          role: "system", 
-          content: "You are a helpful assistant that converts single-player games to multiplayer. Always return complete, functional HTML files with embedded CSS and JavaScript." 
-        },
-        { role: "user", content: prompt }
-      ],
-      temperature: 0.7,
-      max_tokens: 8000,
-      top_p: 1,
-      frequency_penalty: 0,
-      presence_penalty: 0
+    // Upload to S3
+    const s3Key = `games/${gameId}/index.html`;
+    const putCommand = new PutObjectCommand({
+      Bucket: process.env.WEBSITE_BUCKET,
+      Key: s3Key,
+      Body: convertedHtml,
+      ContentType: 'text/html'
     });
-
-    console.log('✅ OpenAI response received');
-    console.log('📊 Usage stats:', completion.usage);
+    await s3Client.send(putCommand);
     
-    // Extract and validate response
-    const convertedGame = completion.choices[0]?.message?.content;
-    
-    if (!convertedGame) {
-      console.error('❌ Empty response from OpenAI');
-      throw new Error('No content returned from OpenAI');
-    }
-    
-    console.log('🎯 Converted game length:', convertedGame.length, 'characters');
-    console.log('🏁 AI Convert Lambda completed successfully');
-    
-    return convertedGame;
-    
+    // Return ConversionResult
+    return {
+      gameUrl: `https://${process.env.CF_DOMAIN}/${s3Key}`,
+      gameId: gameId,
+      serverEndpoint: process.env.API_ENDPOINT
+    };
   } catch (error) {
-    console.error('💥 Error in AI Convert Lambda:', error);
-    
-    // Provide detailed error information for debugging
-    if (error.response) {
-      console.error('🔍 OpenAI API Error Response:', error.response.data);
-      throw new Error(`OpenAI API Error: ${error.response.data.error?.message || 'Unknown API error'}`);
-    } else if (error.request) {
-      console.error('🌐 Network Error:', error.request);
-      throw new Error('Network error calling OpenAI API');
-    } else {
-      console.error('⚙️ Configuration Error:', error.message);
-      throw new Error(`Configuration error: ${error.message}`);
-    }
+    console.error('Error converting game:', error);
+    throw error;
   }
-};
+}
+
+async function handleGenerateGame(event) {
+  const { gameType, requirements } = event.arguments || event;
+  const gameId = `game-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
+  
+  const prompt = `Generate a complete HTML5 ${gameType} game with the following requirements:
+${JSON.stringify(requirements, null, 2)}
+
+The game should be:
+1. Complete and playable
+2. Include embedded CSS and JavaScript
+3. Be responsive and mobile-friendly
+4. Have clear instructions
+5. Support multiplayer if specified in requirements
+
+Return ONLY the complete HTML file with all code embedded.`;
+
+  try {
+    const generatedHtml = await callOpenAI(prompt);
+    
+    // Upload to S3
+    const s3Key = `games/${gameId}/index.html`;
+    const putCommand = new PutObjectCommand({
+      Bucket: process.env.WEBSITE_BUCKET,
+      Key: s3Key,
+      Body: generatedHtml,
+      ContentType: 'text/html'
+    });
+    await s3Client.send(putCommand);
+    
+    // Return Game object
+    return {
+      gameId: gameId,
+      gameType: gameType,
+      gameHtml: generatedHtml,
+      gameState: requirements.initialState || {},
+      players: {},
+      metadata: requirements,
+      serverLogicUrl: '',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+  } catch (error) {
+    console.error('Error generating game:', error);
+    throw error;
+  }
+}
+
+async function callOpenAI(prompt) {
+  const requestBody = JSON.stringify({
+    model: "gpt-4o-mini",
+    messages: [
+      { role: "system", content: "You are a helpful assistant that creates and converts games to multiplayer." },
+      { role: "user", content: prompt }
+    ],
+    temperature: 0.7,
+    max_tokens: 8000
+  });
+
+  const options = {
+    hostname: 'api.openai.com',
+    port: 443,
+    path: '/v1/chat/completions',
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`,
+      'Content-Length': Buffer.byteLength(requestBody)
+    }
+  };
+
+  return new Promise((resolve, reject) => {
+    const req = https.request(options, (res) => {
+      let data = '';
+      
+      res.on('data', (chunk) => {
+        data += chunk;
+      });
+      
+      res.on('end', () => {
+        try {
+          const response = JSON.parse(data);
+          if (response.choices && response.choices[0]) {
+            resolve(response.choices[0].message.content);
+          } else {
+            reject(new Error('Invalid response from OpenAI'));
+          }
+        } catch (error) {
+          reject(error);
+        }
+      });
+    });
+    
+    req.on('error', (error) => {
+      reject(error);
+    });
+    
+    req.write(requestBody);
+    req.end();
+  });
+}

@@ -5,6 +5,7 @@ import * as origins from 'aws-cdk-lib/aws-cloudfront-origins';
 import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as appsync from 'aws-cdk-lib/aws-appsync';
+import * as iam from 'aws-cdk-lib/aws-iam';
 import * as path from 'path';
 import { Construct } from 'constructs';
 
@@ -52,26 +53,37 @@ export class GameStack extends cdk.Stack {
       handler: 'ai-convert.handler',
       environment: {
         OPENAI_API_KEY: process.env.OPENAI_API_KEY || 'YOUR_API_KEY_HERE',
+        WEBSITE_BUCKET: websiteBucket.bucketName,
+        CF_DOMAIN: distribution.distributionDomainName,
+        API_ENDPOINT: '', // Will be set after API is created
+        API_KEY: '', // Will be set after API is created
       },
-      timeout: cdk.Duration.seconds(30),
+      timeout: cdk.Duration.minutes(2),
       memorySize: 512,
     });
 
-    // 5. AppSync API - v2.0 with gameId support - Updated 2025-08-09
+    // Grant S3 write permissions for games/* path
+    websiteBucket.grantWrite(aiConvertLambda, 'games/*');
+
+    // 5. AppSync API - v3.0 with flexible game state support
     const api = new appsync.GraphqlApi(this, 'GameAPI', {
-      name: 'multiplayer-game-api-v2',
+      name: 'multiplayer-game-api-v3',
       definition: appsync.Definition.fromFile(path.join(__dirname, '../schema.graphql')),
       authorizationConfig: {
         defaultAuthorization: {
           authorizationType: appsync.AuthorizationType.API_KEY,
           apiKeyConfig: {
             expires: cdk.Expiration.after(cdk.Duration.days(365)),
-            description: 'API Key for multiplayer game - v2.1 schema update',
+            description: 'API Key for flexible multiplayer game system - v3.0',
           },
         },
       },
       xrayEnabled: false,
     });
+
+    // Update Lambda environment variables with API details
+    aiConvertLambda.addEnvironment('API_ENDPOINT', api.graphqlUrl);
+    aiConvertLambda.addEnvironment('API_KEY', api.apiKey || '');
 
     // 6. Connect AppSync to DynamoDB
     const gameDataSource = api.addDynamoDbDataSource('GameDataSource', gameTable);
@@ -86,18 +98,23 @@ export class GameStack extends cdk.Stack {
         
         export function request(ctx) {
           const now = util.time.nowISO8601();
+          const input = ctx.args.input;
+          
           return {
             operation: 'PutItem',
             key: {
-              gameId: util.dynamodb.toDynamoDB(ctx.args.input.gameId)
+              gameId: util.dynamodb.toDynamoDB(input.gameId)
             },
             attributeValues: {
-              gameId: util.dynamodb.toDynamoDB(ctx.args.input.gameId),
-              player1: util.dynamodb.toDynamoDB(ctx.args.input.player1),
-              gameState: util.dynamodb.toDynamoDB(ctx.args.input.gameState),
-              currentPlayer: util.dynamodb.toDynamoDB(1),
+              gameId: util.dynamodb.toDynamoDB(input.gameId),
+              gameType: util.dynamodb.toDynamoDB(input.gameType),
+              gameHtml: util.dynamodb.toDynamoDB(input.gameHtml || ''),
+              gameState: util.dynamodb.toDynamoDB(input.initialState),
+              players: util.dynamodb.toDynamoDB(input.players || {}),
+              metadata: util.dynamodb.toDynamoDB(input.metadata || {}),
+              serverLogicUrl: util.dynamodb.toDynamoDB(''),
               createdAt: util.dynamodb.toDynamoDB(now),
-              lastMove: util.dynamodb.toDynamoDB(now)
+              updatedAt: util.dynamodb.toDynamoDB(now)
             }
           };
         }
@@ -136,6 +153,45 @@ export class GameStack extends cdk.Stack {
       `),
     });
 
+    gameDataSource.createResolver('ListGamesResolver', {
+      typeName: 'Query',
+      fieldName: 'listGames',
+      runtime: appsync.FunctionRuntime.JS_1_0_0,
+      code: appsync.Code.fromInline(`
+        import { util } from '@aws-appsync/utils';
+        
+        export function request(ctx) {
+          const gameType = ctx.args.gameType;
+          
+          if (gameType) {
+            // Filter by gameType using a Query operation
+            return {
+              operation: 'Query',
+              index: 'gameType-index',
+              query: {
+                expression: 'gameType = :gameType',
+                expressionValues: {
+                  ':gameType': util.dynamodb.toDynamoDB(gameType)
+                }
+              }
+            };
+          } else {
+            // Scan all games
+            return {
+              operation: 'Scan'
+            };
+          }
+        }
+        
+        export function response(ctx) {
+          if (ctx.error) {
+            util.error(ctx.error.message, ctx.error.type);
+          }
+          return ctx.result.items || [];
+        }
+      `),
+    });
+
     gameDataSource.createResolver('JoinGameResolver', {
       typeName: 'Mutation',
       fieldName: 'joinGame',
@@ -145,20 +201,24 @@ export class GameStack extends cdk.Stack {
         
         export function request(ctx) {
           const now = util.time.nowISO8601();
+          const playerInfo = ctx.args.playerInfo;
+          
+          // Since players is stored as AWSJSON (string), we need to update it as a string
+          // The playerInfo should be a JSON string that we'll merge with existing players
           return {
             operation: 'UpdateItem',
             key: {
               gameId: util.dynamodb.toDynamoDB(ctx.args.gameId)
             },
             update: {
-              expression: 'SET player2 = :player2, lastMove = :time',
+              expression: 'SET players = :playerInfo, updatedAt = :time',
               expressionValues: {
-                ':player2': util.dynamodb.toDynamoDB(ctx.args.player2),
+                ':playerInfo': util.dynamodb.toDynamoDB(playerInfo),
                 ':time': util.dynamodb.toDynamoDB(now)
               }
             },
             condition: {
-              expression: 'attribute_exists(gameId) AND attribute_not_exists(player2)'
+              expression: 'attribute_exists(gameId)'
             }
           };
         }
@@ -181,18 +241,32 @@ export class GameStack extends cdk.Stack {
         
         export function request(ctx) {
           const now = util.time.nowISO8601();
+          const input = ctx.args.input;
+          
+          let updateExpression = 'SET gameState = :gameState, updatedAt = :updatedAt';
+          let expressionValues = {
+            ':gameState': util.dynamodb.toDynamoDB(input.gameState),
+            ':updatedAt': util.dynamodb.toDynamoDB(now)
+          };
+          
+          if (input.players) {
+            updateExpression += ', players = :players';
+            expressionValues[':players'] = util.dynamodb.toDynamoDB(input.players);
+          }
+          
+          if (input.metadata) {
+            updateExpression += ', metadata = :metadata';
+            expressionValues[':metadata'] = util.dynamodb.toDynamoDB(input.metadata);
+          }
+          
           return {
             operation: 'UpdateItem',
             key: {
-              gameId: util.dynamodb.toDynamoDB(ctx.args.gameId)
+              gameId: util.dynamodb.toDynamoDB(input.gameId)
             },
             update: {
-              expression: 'SET gameState = :state, currentPlayer = :player, lastMove = :time',
-              expressionValues: {
-                ':state': util.dynamodb.toDynamoDB(ctx.args.state),
-                ':player': util.dynamodb.toDynamoDB(ctx.args.currentPlayer),
-                ':time': util.dynamodb.toDynamoDB(now)
-              }
+              expression: updateExpression,
+              expressionValues: expressionValues
             }
           };
         }
@@ -206,12 +280,44 @@ export class GameStack extends cdk.Stack {
       `),
     });
 
+    gameDataSource.createResolver('ProcessGameActionResolver', {
+      typeName: 'Mutation',
+      fieldName: 'processGameAction',
+      runtime: appsync.FunctionRuntime.JS_1_0_0,
+      code: appsync.Code.fromInline(`
+        import { util } from '@aws-appsync/utils';
+        
+        export function request(ctx) {
+          // For now, just return the action - in Phase 2, this will call Lambda for validation
+          return {
+            operation: 'GetItem',
+            key: {
+              gameId: util.dynamodb.toDynamoDB(ctx.args.gameId)
+            }
+          };
+        }
+        
+        export function response(ctx) {
+          if (ctx.error) {
+            util.error(ctx.error.message, ctx.error.type);
+          }
+          // Return the action as processed - Phase 2 will add actual processing
+          return ctx.args.action;
+        }
+      `),
+    });
+
     // Connect Lambda to AppSync for AI conversion
     const lambdaDataSource = api.addLambdaDataSource('AIConvertDataSource', aiConvertLambda);
     
     lambdaDataSource.createResolver('ConvertToMultiplayerResolver', {
       typeName: 'Mutation',
       fieldName: 'convertToMultiplayer',
+    });
+
+    lambdaDataSource.createResolver('GenerateGameResolver', {
+      typeName: 'Mutation',
+      fieldName: 'generateGame',
     });
 
     // Outputs

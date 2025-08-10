@@ -2,20 +2,24 @@ import { util } from '@aws-appsync/utils';
 
 export function request(ctx) {
   const now = util.time.nowISO8601();
+  const playerInfo = ctx.args.playerInfo;
+  
+  // Since players is stored as AWSJSON (string), we need to update it as a string
+  // The playerInfo should be a JSON string that we'll merge with existing players
   return {
     operation: 'UpdateItem',
     key: {
       gameId: util.dynamodb.toDynamoDB(ctx.args.gameId)
     },
     update: {
-      expression: 'SET player2 = :player2, lastMove = :time',
+      expression: 'SET players = :playerInfo, updatedAt = :time',
       expressionValues: {
-        ':player2': util.dynamodb.toDynamoDB(ctx.args.player2),
+        ':playerInfo': util.dynamodb.toDynamoDB(playerInfo),
         ':time': util.dynamodb.toDynamoDB(now)
       }
     },
     condition: {
-      expression: 'attribute_exists(gameId) AND attribute_not_exists(player2)'
+      expression: 'attribute_exists(gameId)'
     }
   };
 }

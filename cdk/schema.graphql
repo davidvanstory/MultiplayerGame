@@ -1,42 +1,50 @@
-# Schema Version: 2.0 - Updated 2025-08-09 to include gameId in CreateGameInput
+# Schema Version: 3.0 - Flexible game system for ANY game type
 type Game {
   gameId: ID!
-  player1: String
-  player2: String
-  gameState: GameState!
-  currentPlayer: Int!
-  winner: String
+  gameType: String!         # "tictactoe", "chess", "counter", "ai-generated", etc.
+  gameHtml: String           # Stored HTML content for the game
+  gameState: AWSJSON!        # Flexible JSON for ANY game state
+  players: AWSJSON!          # Support N players with flexible structure
+  metadata: AWSJSON!         # Game-specific metadata (rules, settings, etc.)
+  serverLogicUrl: String     # Lambda ARN for game-specific validation
   createdAt: String!
-  lastMove: String!
-}
-
-type GameState {
-  counter: Int!
-  gameActive: Boolean!
-  currentTurn: Int!
-}
-
-input GameStateInput {
-  counter: Int!
-  gameActive: Boolean!
-  currentTurn: Int!
+  updatedAt: String!
 }
 
 input CreateGameInput {
   gameId: ID!
-  player1: String!
-  gameState: GameStateInput!
+  gameType: String!
+  gameHtml: String
+  initialState: AWSJSON!
+  players: AWSJSON
+  metadata: AWSJSON
+}
+
+input UpdateGameInput {
+  gameId: ID!
+  gameState: AWSJSON!
+  players: AWSJSON
+  metadata: AWSJSON
+}
+
+type ConversionResult {
+  gameUrl: String!
+  gameId: String!
+  serverEndpoint: String!
 }
 
 type Query {
   getGame(gameId: ID!): Game
+  listGames(gameType: String): [Game!]!
 }
 
 type Mutation {
   createGame(input: CreateGameInput!): Game!
-  joinGame(gameId: ID!, player2: String!): Game!
-  updateGame(gameId: ID!, state: GameStateInput!, currentPlayer: Int!): Game!
-  convertToMultiplayer(gameHtml: String!): String!
+  updateGame(input: UpdateGameInput!): Game!
+  joinGame(gameId: ID!, playerInfo: AWSJSON!): Game!
+  generateGame(gameType: String!, requirements: AWSJSON!): Game!
+  convertToMultiplayer(gameId: ID!, gameHtml: String!): ConversionResult!
+  processGameAction(gameId: ID!, action: AWSJSON!): AWSJSON!
 }
 
 type Subscription {
