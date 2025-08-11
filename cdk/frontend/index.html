@@ -364,7 +364,7 @@
   </style>
 </head>
 <body>
-  <h1>🎮 Multiplayer Game Platform - AI Powered</h1>
+  <h1 data-game-state="platform-title">🎮 Multiplayer Game Platform - AI Powered</h1>
   
   <!-- Debug Console -->
   <div class="debug-console-toggle" onclick="toggleDebugConsole()">
@@ -407,39 +407,39 @@
   </div>
 
   <div class="tab-container">
-    <button class="tab active" onclick="switchTab('play')">Play/Join Game</button>
-    <button class="tab" onclick="switchTab('create')">Create with AI</button>
-    <button class="tab" onclick="switchTab('convert')">Convert to Multiplayer</button>
+    <button class="tab active" data-game-action="switch-tab" data-tab="play" onclick="switchTab('play')">Play/Join Game</button>
+    <button class="tab" data-game-action="switch-tab" data-tab="create" onclick="switchTab('create')">Create with AI</button>
+    <button class="tab" data-game-action="switch-tab" data-tab="convert" onclick="switchTab('convert')">Convert to Multiplayer</button>
   </div>
   
   <!-- Play/Join Tab -->
   <div id="playTab" class="tab-content active">
     <div id="setup">
     <h2>Start or Join Game</h2>
-    <button id="createGame">Create New Game</button>
+    <button id="createGame" data-game-action="create-game">Create New Game</button>
     <br><br>
-    <input type="text" id="joinGameId" placeholder="Enter Game ID to join">
-    <button id="joinGame">Join Game</button>
+    <input type="text" id="joinGameId" data-game-input="join-game-id" placeholder="Enter Game ID to join">
+    <button id="joinGame" data-game-action="join-game">Join Game</button>
   </div>
 
   <div id="gameArea" style="display: none;">
     <div class="status">
       Game ID: <span id="gameId"></span>
-      <button id="copyGameId">Copy</button>
+      <button id="copyGameId" data-game-action="copy-game-id">Copy</button>
     </div>
     
     <div class="game-container">
       <h3>Game Status</h3>
-      <p>You are: <span id="playerRole" class="player-indicator"></span></p>
-      <p>Current Turn: <span id="currentTurn" class="player-indicator"></span></p>
-      <p>Counter: <span id="counter" style="font-size: 24px; font-weight: bold;">0</span></p>
-      <p>Target: <span id="target">5</span></p>
+      <p>You are: <span id="playerRole" class="player-indicator" data-game-state="player-role"></span></p>
+      <p>Current Turn: <span id="currentTurn" class="player-indicator" data-game-state="current-turn"></span></p>
+      <p>Counter: <span id="counter" style="font-size: 24px; font-weight: bold;" data-game-state="counter">0</span></p>
+      <p>Target: <span id="target" data-game-state="target">5</span></p>
       
-      <button id="takeTurn" disabled>Take Turn</button>
+      <button id="takeTurn" data-game-action="take-turn" disabled>Take Turn</button>
       
       <div id="winner" style="display: none; margin-top: 20px;">
         <h2 style="color: green;">🎉 <span id="winnerName"></span> Wins! 🎉</h2>
-        <button id="newGame">Start New Game</button>
+        <button id="newGame" data-game-action="new-game">Start New Game</button>
       </div>
     </div>
   </div>
@@ -503,7 +503,7 @@
       
       <div class="form-field">
         <label>Additional Requirements</label>
-        <textarea id="requirements" placeholder="Describe any specific features or requirements for your game..."></textarea>
+        <textarea id="requirements" data-game-input="game-requirements" placeholder="Describe any specific features or requirements for your game..."></textarea>
       </div>
       
       <div class="form-field">
@@ -515,7 +515,7 @@
         </select>
       </div>
       
-      <button class="generate-btn" id="generateGameBtn">🚀 Generate Game</button>
+      <button class="generate-btn" id="generateGameBtn" data-game-action="generate-game">🚀 Generate Game</button>
       
       <div class="loading" id="loadingIndicator">
         <div class="spinner"></div>
@@ -529,7 +529,7 @@
       <h3>Generated Game Preview</h3>
       <iframe class="preview-iframe" id="generatedGameFrame" sandbox="allow-scripts allow-same-origin"></iframe>
       <br><br>
-      <button class="generate-btn" id="convertGeneratedBtn">🌐 Convert to Multiplayer</button>
+      <button class="generate-btn" id="convertGeneratedBtn" data-game-action="convert-generated">🌐 Convert to Multiplayer</button>
     </div>
   </div>
   
@@ -539,10 +539,10 @@
     <div class="generation-form">
       <div class="form-field">
         <label>Paste your single-player HTML game code</label>
-        <textarea id="singlePlayerHtml" placeholder="Paste your complete HTML game code here..." style="min-height: 200px;"></textarea>
+        <textarea id="singlePlayerHtml" data-game-input="single-player-html" placeholder="Paste your complete HTML game code here..." style="min-height: 200px;"></textarea>
       </div>
       
-      <button class="generate-btn" id="convertHtmlBtn">🎮 Convert to Multiplayer</button>
+      <button class="generate-btn" id="convertHtmlBtn" data-game-action="convert-html">🎮 Convert to Multiplayer</button>
       
       <div class="loading" id="convertLoadingIndicator">
         <div class="spinner"></div>
@@ -562,7 +562,13 @@
     </div>
   </div>
 
+  <!-- Include the multiplayer library for main interface -->
+  <script src="multiplayer-lib.js"></script>
+  
   <script>
+    // Enable debug mode for the main interface
+    window.DEBUG_MULTIPLAYER = true;
+    
     // Configuration
     const API_ENDPOINT = 'https://wdmfu2wflrhxbi3hhvaqmk64re.appsync-api.us-east-2.amazonaws.com/graphql';
     const API_KEY = 'da2-4kwhajemrzbojl4vs7j7bjih5a';
@@ -574,6 +580,7 @@
     let currentGeneratedGame = null;
     let selectedGameType = null;
     let selectedFeatures = new Set();
+    let mainInterfaceEvents = null; // GameEventBridge for main UI
 
     // Event System Variables
     let eventQueue = [];
@@ -586,10 +593,49 @@
     const MAX_BATCH_SIZE = 50;
     const MAX_DEBUG_EVENTS = 100;
     
-    // Initialize event system
-    initializeEventSystem();
+    // Initialize event system when DOM is ready
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', initializeEventSystem);
+    } else {
+      // DOM is already loaded
+      initializeEventSystem();
+    }
     
     function initializeEventSystem() {
+      // Initialize GameEventBridge for main interface
+      if (window.GameEventBridge) {
+        mainInterfaceEvents = new window.GameEventBridge({
+          gameId: 'platform-main',
+          playerId: localStorage.getItem('platformUserId') || 'platform-' + Math.random().toString(36).substring(2, 11),
+          sessionId: sessionId,
+          batchEvents: true,
+          batchInterval: 100,
+          autoIntercept: true
+        });
+        
+        // Store platform user ID
+        if (!localStorage.getItem('platformUserId')) {
+          localStorage.setItem('platformUserId', mainInterfaceEvents.playerId);
+        }
+        
+        // Listen for main interface events
+        mainInterfaceEvents.on('*', function(event) {
+          console.log('[Platform Event]', event);
+          // Add to debug console with [PLATFORM] prefix
+          const platformEvent = {
+            ...event,
+            source: 'PLATFORM'
+          };
+          addDebugEvent(platformEvent);
+        });
+        
+        // Emit initialization event
+        mainInterfaceEvents.emit('TRANSITION', {
+          state: 'platform_initialized',
+          message: 'Main interface GameEventBridge ready'
+        });
+      }
+      
       // Set up message listener for iframe events
       window.addEventListener('message', handleIframeMessage);
       
@@ -769,6 +815,11 @@
     }
     
     function addDebugEvent(event) {
+      // Add source identifier if not present
+      if (!event.source) {
+        event.source = 'IFRAME';
+      }
+      
       debugEvents.unshift(event);
       
       // Keep only the last MAX_DEBUG_EVENTS
@@ -798,16 +849,34 @@
       }
       
       container.innerHTML = debugEvents.map(event => {
-        const time = new Date(event.metadata.timestamp || event.metadata.receivedAt);
+        const time = new Date(event.metadata?.timestamp || event.metadata?.receivedAt || Date.now());
         const timeStr = time.toLocaleTimeString() + '.' + time.getMilliseconds();
+        const source = event.source || 'UNKNOWN';
+        const sourceColor = source === 'PLATFORM' ? '#667eea' : '#27ae60';
+        
+        // Include gameId and playerId if present
+        const gameInfo = event.metadata?.gameId ? 
+          `<span style="color: #f39c12; margin: 0 5px;">Game: ${event.metadata.gameId.substring(0, 12)}...</span>` : '';
+        const playerInfo = event.metadata?.playerId ? 
+          `<span style="color: #3498db; margin: 0 5px;">Player: ${event.metadata.playerId}</span>` : '';
+        
+        // Combine data and metadata for display
+        const displayData = {
+          ...event.data,
+          ...(event.metadata?.gameId && { gameId: event.metadata.gameId }),
+          ...(event.metadata?.playerId && { playerId: event.metadata.playerId })
+        };
         
         return `
           <div class="debug-event ${event.type}">
             <div class="debug-event-header">
               <span class="debug-event-type">${event.type}</span>
+              <span style="color: ${sourceColor}; margin: 0 10px; font-weight: bold;">[${source}]</span>
+              ${gameInfo}
+              ${playerInfo}
               <span class="debug-event-time">${timeStr}</span>
             </div>
-            <div class="debug-event-data">${JSON.stringify(event.data, null, 2)}</div>
+            <div class="debug-event-data">${JSON.stringify(displayData, null, 2)}</div>
           </div>
         `;
       }).join('');
@@ -839,6 +908,15 @@
 
     // Tab switching
     function switchTab(tabName) {
+      // Emit tab switch event
+      if (mainInterfaceEvents) {
+        mainInterfaceEvents.emit('INTERACTION', {
+          action: 'tab_switch',
+          from: document.querySelector('.tab.active')?.getAttribute('data-tab'),
+          to: tabName
+        });
+      }
+      
       // Hide all tabs
       document.querySelectorAll('.tab-content').forEach(tab => {
         tab.classList.remove('active');
@@ -876,6 +954,14 @@
 
     // Create new game
     document.getElementById('createGame').addEventListener('click', async () => {
+      // Emit game creation start event
+      if (mainInterfaceEvents) {
+        mainInterfaceEvents.emit('INTERACTION', {
+          action: 'create_game_clicked',
+          gameType: 'counter'
+        });
+      }
+      
       try {
         const mutation = `
           mutation CreateGame($input: CreateGameInput!) {
@@ -925,6 +1011,16 @@
         const parsedState = JSON.parse(data.createGame.gameState);
         gameState = parsedState;
         
+        // Emit game creation success event
+        if (mainInterfaceEvents) {
+          mainInterfaceEvents.emit('TRANSITION', {
+            state: 'game_created',
+            gameId: gameId,
+            playerNumber: playerNumber,
+            gameType: 'counter'
+          });
+        }
+        
         document.getElementById('setup').style.display = 'none';
         document.getElementById('gameArea').style.display = 'block';
         document.getElementById('gameId').textContent = gameId;
@@ -943,6 +1039,15 @@
       console.log('Join game button clicked');
       const inputGameId = document.getElementById('joinGameId').value.trim();
       console.log('Game ID entered:', inputGameId);
+      
+      // Emit join game attempt event
+      if (mainInterfaceEvents) {
+        mainInterfaceEvents.emit('INTERACTION', {
+          action: 'join_game_clicked',
+          gameId: inputGameId
+        });
+      }
+      
       if (!inputGameId) {
         alert('Please enter a game ID');
         return;
@@ -978,6 +1083,15 @@
         const parsedState = JSON.parse(data.joinGame.gameState);
         gameState = parsedState;
         
+        // Emit game joined success event
+        if (mainInterfaceEvents) {
+          mainInterfaceEvents.emit('TRANSITION', {
+            state: 'game_joined',
+            gameId: gameId,
+            playerNumber: playerNumber
+          });
+        }
+        
         document.getElementById('setup').style.display = 'none';
         document.getElementById('gameArea').style.display = 'block';
         document.getElementById('gameId').textContent = gameId;
@@ -994,6 +1108,15 @@
     // Take turn
     document.getElementById('takeTurn').addEventListener('click', async () => {
       if (!gameState || !gameState.gameActive) return;
+      
+      // Emit turn attempt event
+      if (mainInterfaceEvents) {
+        mainInterfaceEvents.emit('INTERACTION', {
+          action: 'take_turn',
+          playerNumber: playerNumber,
+          currentCounter: gameState.counter
+        });
+      }
       
       try {
         const newCounter = gameState.counter + 1;
@@ -1025,6 +1148,16 @@
         // Update local state with the response
         const parsedState = JSON.parse(data.updateGame.gameState);
         updateGameState(parsedState);
+        
+        // Emit turn success event
+        if (mainInterfaceEvents) {
+          mainInterfaceEvents.emit('UPDATE', {
+            element: 'turn_complete',
+            player: playerNumber,
+            newCounter: parsedState.counter,
+            isWin: !parsedState.gameActive
+          });
+        }
       } catch (error) {
         alert('Failed to take turn: ' + error.message);
       }
@@ -1121,6 +1254,16 @@
       
       const requirements = document.getElementById('requirements').value;
       
+      // Emit AI generation start event
+      if (mainInterfaceEvents) {
+        mainInterfaceEvents.emit('INTERACTION', {
+          action: 'generate_game_ai',
+          gameType: selectedGameType,
+          features: Array.from(selectedFeatures),
+          requirements: requirements
+        });
+      }
+      
       try {
         showLoading(true);
         hideStatus();
@@ -1160,6 +1303,15 @@
           // Set active frame and inject config
           activeGameFrame = iframe;
           injectGameConfig(iframe, data.generateGame.gameId, 'player1');
+          
+          // Emit AI generation success event
+          if (mainInterfaceEvents) {
+            mainInterfaceEvents.emit('TRANSITION', {
+              state: 'ai_game_generated',
+              gameId: data.generateGame.gameId,
+              gameType: selectedGameType
+            });
+          }
           
           document.getElementById('generatedPreview').classList.add('active');
           showStatus('Game generated successfully!', 'success');
