@@ -938,6 +938,9 @@ function buildConversionPrompt(html, analysis) {
    - Apply state updates to game UI immediately
    - Send action events to parent for server processing
    - No direct API calls - parent handles all server communication
+   - Implement message handler: window.addEventListener('message', handleParentMessage)
+   - Update game state when receiving 'STATE_UPDATE' messages
+   - Sync player list, turn indicators, and game board from server state
 
 4. Data Attributes (PRESERVE EXISTING):
    - Keep all existing data-game-action attributes
@@ -975,6 +978,19 @@ GAME ID SHARING (REQUIRED):
 - Add copy-to-clipboard functionality for easy sharing
 - Show "Share this Game ID with other players to join" message
 - Include JavaScript functions: updateGameId() to get ID from window.GAME_CONFIG.gameId, copyGameId() for clipboard copy, and call updateGameId() every second
+
+JOIN GAME UI (REQUIRED):
+- Add a "Join Game" section: <div id="join-game-section"><input type="text" id="join-game-input" placeholder="Enter Game ID to join..." /><button onclick="joinGame()">Join Game</button></div>
+- Add joinGame() function that calls parent.postMessage({source: 'GameEventBridge', action: 'JOIN_GAME', gameId: document.getElementById('join-game-input').value}, '*')
+- Hide join section when game starts, show game ID section instead
+- Style join UI to be prominent and easy to use
+
+STATE UPDATE HANDLER (REQUIRED):
+- Add message listener: window.addEventListener('message', handleParentMessage)
+- Check if event.data.target === 'GameEventBridge' and event.data.type === 'STATE_UPDATE'
+- Apply incoming state to game board, turn indicators, player list, and scores
+- Update UI elements to reflect current server state
+- Handle player join/leave by updating player displays
 
 ORIGINAL HTML:
 ${html}

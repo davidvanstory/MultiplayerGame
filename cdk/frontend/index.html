@@ -687,6 +687,12 @@
       
       console.log('Received GameEventBridge message:', event.data);
       
+      // Handle JOIN_GAME action
+      if (event.data.action === 'JOIN_GAME' && event.data.gameId) {
+        joinExistingGame(event.data.gameId);
+        return;
+      }
+      
       // Process incoming events
       const { gameId, playerId, events } = event.data;
       
@@ -835,7 +841,38 @@
       }
     }
     
-    function injectGameConfig(iframe, gameId, playerId) {
+    async function getPlayerIdForGame(gameId) {
+      try {
+        // Get current game state to determine player ID
+        const response = await makeGraphQLRequest(`
+          query GetGame($gameId: ID!) {
+            getGame(gameId: $gameId) {
+              players
+            }
+          }
+        `, { gameId });
+        
+        if (response && response.getGame && response.getGame.players) {
+          const players = JSON.parse(response.getGame.players);
+          const playerCount = Object.keys(players).length;
+          
+          // Generate next player ID
+          return `player${playerCount + 1}`;
+        }
+      } catch (error) {
+        console.error('Failed to get game state for player ID:', error);
+      }
+      
+      // Fallback to player1
+      return 'player1';
+    }
+    
+    async function injectGameConfig(iframe, gameId, playerId) {
+      // Get dynamic player ID if not provided
+      if (!playerId) {
+        playerId = await getPlayerIdForGame(gameId);
+      }
+      
       // Wait for iframe to load
       iframe.addEventListener('load', () => {
         console.log('Injecting GAME_CONFIG into iframe');
@@ -867,6 +904,59 @@
           console.error('Failed to inject GAME_CONFIG:', error);
         }
       });
+    }
+    
+    async function joinExistingGame(gameId) {
+      if (!gameId || gameId.trim() === '') {
+        console.error('Cannot join game: Invalid game ID');
+        return;
+      }
+      
+      try {
+        console.log('Attempting to join game:', gameId);
+        
+        // Check if game exists
+        const gameResponse = await makeGraphQLRequest(`
+          query GetGame($gameId: ID!) {
+            getGame(gameId: $gameId) {
+              gameId
+              gameType
+              gameStatus
+            }
+          }
+        `, { gameId: gameId.trim() });
+        
+        if (!gameResponse || !gameResponse.getGame) {
+          console.error('Game not found:', gameId);
+          alert('Game not found. Please check the Game ID and try again.');
+          return;
+        }
+        
+        // Load the game in an iframe
+        const gameUrl = `https://d17uiucy3a9bfl.cloudfront.net/games/${gameId}/index.html`;
+        const iframe = document.createElement('iframe');
+        iframe.src = gameUrl;
+        iframe.style.width = '100%';
+        iframe.style.height = '600px';
+        iframe.style.border = 'none';
+        
+        // Replace current content
+        const gameContainer = document.getElementById('gameContainer') || document.body;
+        gameContainer.innerHTML = '';
+        gameContainer.appendChild(iframe);
+        
+        // Wait for iframe to load and inject config
+        iframe.addEventListener('load', async () => {
+          activeGameFrame = iframe;
+          currentGameId = gameId;
+          await injectGameConfig(iframe, gameId);
+          console.log('Successfully joined game:', gameId);
+        });
+        
+      } catch (error) {
+        console.error('Failed to join game:', error);
+        alert('Failed to join game. Please try again.');
+      }
     }
     
     function generateSessionId() {
@@ -1606,7 +1696,7 @@
           // Set active frame and inject config
           activeGameFrame = iframe;
           currentGameId = data.generateGame.gameId;
-          injectGameConfig(iframe, data.generateGame.gameId, 'player1');
+          await injectGameConfig(iframe, data.generateGame.gameId);
           
           // Emit AI generation success event
           if (mainInterfaceEvents) {
@@ -1763,7 +1853,7 @@
                   // Set active frame and inject config
                   activeGameFrame = iframe;
                   currentGameId = gameId;
-                  injectGameConfig(iframe, gameId, 'player1');
+                  await injectGameConfig(iframe, gameId);
                   
                   document.getElementById('convertedGameUrl').href = gameUrl;
                   document.getElementById('convertedGameUrl').textContent = gameUrl;
