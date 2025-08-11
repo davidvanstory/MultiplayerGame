@@ -328,6 +328,16 @@
       0% { transform: rotate(0deg); }
       100% { transform: rotate(360deg); }
     }
+    @keyframes slideIn {
+      from {
+        transform: translateX(100%);
+        opacity: 0;
+      }
+      to {
+        transform: translateX(0);
+        opacity: 1;
+      }
+    }
     .status-message {
       padding: 15px;
       border-radius: 8px;
@@ -594,6 +604,7 @@
     let gameId = null;
     let playerNumber = null;
     let gameState = null;
+    let stateVersion = null; // Track state version for efficient polling
     let subscription = null;
     let currentGeneratedGame = null;
     let selectedGameType = null;
@@ -1144,50 +1155,169 @@
         });
       }
       
+      // Disable button during processing
+      const takeTurnBtn = document.getElementById('takeTurn');
+      takeTurnBtn.disabled = true;
+      takeTurnBtn.textContent = 'Processing...';
+      
       try {
-        const newCounter = gameState.counter + 1;
-        const isWin = newCounter >= parseInt(document.getElementById('target').textContent);
-        
-        const mutation = `
-          mutation UpdateGame($input: UpdateGameInput!) {
-            updateGame(input: $input) {
-              gameId
-              gameState
-              players
+        // Create action object for the universal game engine
+        const action = {
+          type: 'UPDATE',
+          playerId: localStorage.getItem('playerId') || `player${playerNumber}`,
+          data: {
+            state: {
+              counter: gameState.counter + 1,
+              gameActive: (gameState.counter + 1) < parseInt(document.getElementById('target').textContent),
+              currentTurn: playerNumber === 1 ? 2 : 1
             }
+          }
+        };
+        
+        // Call processGameAction mutation
+        const mutation = `
+          mutation ProcessGameAction($gameId: ID!, $action: AWSJSON!) {
+            processGameAction(gameId: $gameId, action: $action)
           }
         `;
         
-        const updatedState = {
-          counter: newCounter,
-          gameActive: !isWin,
-          currentTurn: isWin ? playerNumber : (playerNumber === 1 ? 2 : 1)
-        };
+        console.log('Sending action to universal game engine:', action);
         
-        const data = await graphqlRequest(mutation, {
-          input: {
-            gameId: gameId,
-            gameState: JSON.stringify(updatedState)
-          }
+        const result = await graphqlRequest(mutation, {
+          gameId: gameId,
+          action: JSON.stringify(action)
         });
         
-        // Update local state with the response
-        const parsedState = JSON.parse(data.updateGame.gameState);
-        updateGameState(parsedState);
+        console.log('Game engine response:', result);
         
-        // Emit turn success event
-        if (mainInterfaceEvents) {
-          mainInterfaceEvents.emit('UPDATE', {
-            element: 'turn_complete',
-            player: playerNumber,
-            newCounter: parsedState.counter,
-            isWin: !parsedState.gameActive
-          });
+        // Handle the response
+        if (result.processGameAction) {
+          const response = typeof result.processGameAction === 'string'
+            ? JSON.parse(result.processGameAction)
+            : result.processGameAction;
+          
+          if (response.success) {
+            // Update state if provided
+            if (response.state) {
+              updateGameState(response.state);
+              // Update state version if provided
+              if (response.stateVersion) {
+                stateVersion = response.stateVersion;
+              }
+            }
+            
+            // Show success feedback
+            showActionFeedback('Turn processed successfully', 'success');
+            
+            // Emit turn success event
+            if (mainInterfaceEvents) {
+              mainInterfaceEvents.emit('UPDATE', {
+                element: 'turn_complete',
+                player: playerNumber,
+                newState: response.state
+              });
+            }
+            
+            // Handle broadcast messages
+            if (response.broadcast) {
+              console.log('Broadcast message:', response.broadcast);
+              handleBroadcastMessage(response.broadcast);
+            }
+          } else {
+            // Show error
+            showActionFeedback(response.error || 'Action failed', 'error');
+            
+            // Re-enable button if action failed
+            takeTurnBtn.disabled = false;
+            takeTurnBtn.textContent = 'Take Turn';
+          }
         }
       } catch (error) {
-        alert('Failed to take turn: ' + error.message);
+        console.error('Failed to process action:', error);
+        showActionFeedback('Failed to process turn: ' + error.message, 'error');
+        
+        // Re-enable button on error
+        takeTurnBtn.disabled = false;
+        takeTurnBtn.textContent = 'Take Turn';
       }
     });
+
+    // Add action feedback display function
+    function showActionFeedback(message, type) {
+      // Create or update feedback element
+      let feedback = document.getElementById('actionFeedback');
+      if (!feedback) {
+        feedback = document.createElement('div');
+        feedback.id = 'actionFeedback';
+        feedback.style.cssText = `
+          position: fixed;
+          top: 20px;
+          right: 20px;
+          padding: 15px 20px;
+          border-radius: 8px;
+          z-index: 2000;
+          animation: slideIn 0.3s ease;
+          font-weight: bold;
+        `;
+        document.body.appendChild(feedback);
+      }
+      
+      // Set style based on type
+      if (type === 'success') {
+        feedback.style.background = '#d4edda';
+        feedback.style.color = '#155724';
+        feedback.style.border = '1px solid #c3e6cb';
+      } else if (type === 'error') {
+        feedback.style.background = '#f8d7da';
+        feedback.style.color = '#721c24';
+        feedback.style.border = '1px solid #f5c6cb';
+      } else {
+        feedback.style.background = '#d1ecf1';
+        feedback.style.color = '#0c5460';
+        feedback.style.border = '1px solid #bee5eb';
+      }
+      
+      feedback.textContent = message;
+      feedback.style.display = 'block';
+      
+      // Auto-hide after 3 seconds
+      setTimeout(() => {
+        if (feedback) {
+          feedback.style.display = 'none';
+        }
+      }, 3000);
+    }
+    
+    // Handle broadcast messages from the game engine
+    function handleBroadcastMessage(broadcast) {
+      if (!broadcast) return;
+      
+      switch (broadcast.type) {
+        case 'PLAYER_JOINED':
+          console.log(`Player joined: ${broadcast.playerId}`);
+          showActionFeedback(`A player has joined the game`, 'info');
+          break;
+        case 'GAME_STARTED':
+          console.log(`Game started by: ${broadcast.startedBy}`);
+          showActionFeedback('Game has started!', 'success');
+          break;
+        case 'MOVE_MADE':
+          console.log(`Move made by: ${broadcast.playerId}`);
+          if (broadcast.winner) {
+            showActionFeedback(`Game Over! Winner: ${broadcast.winner}`, 'success');
+          }
+          break;
+        case 'STATE_UPDATE':
+          console.log(`State updated by: ${broadcast.playerId}`);
+          break;
+        case 'GAME_ENDED':
+          console.log(`Game ended by: ${broadcast.endedBy}`);
+          showActionFeedback(`Game ended. Winner: ${broadcast.winner || 'None'}`, 'info');
+          break;
+        default:
+          console.log('Unknown broadcast type:', broadcast.type);
+      }
+    }
 
     // Start game UI
     function startGame() {
@@ -1198,19 +1328,94 @@
 
     // Update game state
     function updateGameState(state) {
+      if (!state) return;
+      
       gameState = state;
-      document.getElementById('counter').textContent = state.counter;
       
-      const isMyTurn = state.currentTurn === playerNumber;
-      document.getElementById('takeTurn').disabled = !isMyTurn || !state.gameActive;
+      // Update counter display
+      if (state.counter !== undefined) {
+        document.getElementById('counter').textContent = state.counter;
+      }
       
-      document.getElementById('currentTurn').textContent = `Player ${state.currentTurn}`;
-      document.getElementById('currentTurn').className = `player-indicator player${state.currentTurn}`;
+      // Determine current turn - handle both old and new state formats
+      const currentTurn = state.currentTurn || state.currentPlayer || 1;
+      const isMyTurn = currentTurn === playerNumber ||
+                      (typeof currentTurn === 'string' && currentTurn === localStorage.getItem('playerId'));
       
+      // Update turn button
+      const takeTurnBtn = document.getElementById('takeTurn');
+      if (takeTurnBtn) {
+        takeTurnBtn.disabled = !isMyTurn || !state.gameActive;
+        takeTurnBtn.textContent = isMyTurn ? 'Take Turn' : 'Waiting...';
+      }
+      
+      // Update current turn display
+      const turnDisplay = document.getElementById('currentTurn');
+      if (turnDisplay) {
+        if (typeof currentTurn === 'string') {
+          // Handle player ID format
+          turnDisplay.textContent = currentTurn.includes('player1') ? 'Player 1' : 'Player 2';
+          turnDisplay.className = `player-indicator ${currentTurn.includes('player1') ? 'player1' : 'player2'}`;
+        } else {
+          // Handle numeric format
+          turnDisplay.textContent = `Player ${currentTurn}`;
+          turnDisplay.className = `player-indicator player${currentTurn}`;
+        }
+      }
+      
+      // Check for game end
       if (!state.gameActive) {
-        document.getElementById('winner').style.display = 'block';
-        document.getElementById('winnerName').textContent = `Player ${state.currentTurn}`;
-        document.getElementById('takeTurn').style.display = 'none';
+        const winnerDisplay = document.getElementById('winner');
+        if (winnerDisplay) {
+          winnerDisplay.style.display = 'block';
+          
+          // Determine winner
+          let winnerName = 'Unknown';
+          if (state.winner) {
+            if (typeof state.winner === 'string') {
+              winnerName = state.winner.includes('player1') ? 'Player 1' : 'Player 2';
+            } else {
+              winnerName = `Player ${state.winner}`;
+            }
+          } else if (state.currentTurn) {
+            // If no explicit winner, current turn player likely won
+            winnerName = typeof state.currentTurn === 'string'
+              ? (state.currentTurn.includes('player1') ? 'Player 1' : 'Player 2')
+              : `Player ${state.currentTurn}`;
+          }
+          
+          document.getElementById('winnerName').textContent = winnerName;
+        }
+        
+        if (takeTurnBtn) {
+          takeTurnBtn.style.display = 'none';
+        }
+      }
+      
+      // Update any additional state displays
+      if (state.moveCount !== undefined) {
+        let moveDisplay = document.getElementById('moveCount');
+        if (!moveDisplay) {
+          moveDisplay = document.createElement('p');
+          moveDisplay.id = 'moveCount';
+          const gameContainer = document.querySelector('.game-container');
+          if (gameContainer) {
+            gameContainer.appendChild(moveDisplay);
+          }
+        }
+        moveDisplay.textContent = `Moves: ${state.moveCount}`;
+      }
+      
+      // Update last activity if present
+      if (state.lastActivity) {
+        const lastActivity = new Date(state.lastActivity);
+        const now = new Date();
+        const inactiveMs = now - lastActivity;
+        
+        // Warn if game has been inactive for more than 5 minutes
+        if (inactiveMs > 300000) {
+          showActionFeedback('Game has been inactive for a while', 'info');
+        }
       }
     }
 

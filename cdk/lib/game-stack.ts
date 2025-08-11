@@ -104,7 +104,27 @@ export class GameStack extends cdk.Stack {
 
     gameTable.grantReadWriteData(aiConvertLambda);
 
-    // 5. AppSync API - v3.0 with flexible game state support
+    // 5. Universal Game Engine Lambda for state management
+    const gameEngineLambda = new lambda.Function(this, 'UniversalGameEngine', {
+      runtime: lambda.Runtime.NODEJS_20_X,
+      code: lambda.Code.fromAsset(path.join(__dirname, '../lambda')),
+      handler: 'universal-game-engine.handler',
+      environment: {
+        GAME_TABLE_NAME: gameTable.tableName,
+        REGION: this.region,
+      },
+      timeout: cdk.Duration.seconds(25), // AppSync timeout is 29s, leave buffer
+      memorySize: 256,
+    });
+
+    // Grant permissions to Universal Game Engine
+    gameTable.grantReadWriteData(gameEngineLambda);
+    gameEngineLambda.addToRolePolicy(new iam.PolicyStatement({
+      actions: ['lambda:InvokeFunction'],
+      resources: [`arn:aws:lambda:${this.region}:${this.account}:function:game-validator-*`],
+    }));
+
+    // 6. AppSync API - v3.0 with flexible game state support
     const api = new appsync.GraphqlApi(this, 'GameAPI', {
       name: 'multiplayer-game-api-v3',
       definition: appsync.Definition.fromFile(path.join(__dirname, '../schema.graphql')),
@@ -319,32 +339,7 @@ export class GameStack extends cdk.Stack {
       `),
     });
 
-    gameDataSource.createResolver('ProcessGameActionResolver', {
-      typeName: 'Mutation',
-      fieldName: 'processGameAction',
-      runtime: appsync.FunctionRuntime.JS_1_0_0,
-      code: appsync.Code.fromInline(`
-        import { util } from '@aws-appsync/utils';
-        
-        export function request(ctx) {
-          // For now, just return the action - in Phase 2, this will call Lambda for validation
-          return {
-            operation: 'GetItem',
-            key: {
-              gameId: util.dynamodb.toDynamoDB(ctx.args.gameId)
-            }
-          };
-        }
-        
-        export function response(ctx) {
-          if (ctx.error) {
-            util.error(ctx.error.message, ctx.error.type);
-          }
-          // Return the action as processed - Phase 2 will add actual processing
-          return ctx.args.action;
-        }
-      `),
-    });
+    // ProcessGameActionResolver is now handled by Lambda data source (see below)
 
     // Connect Lambda to AppSync for AI conversion
     const lambdaDataSource = api.addLambdaDataSource('AIConvertDataSource', aiConvertLambda);
@@ -357,6 +352,36 @@ export class GameStack extends cdk.Stack {
     lambdaDataSource.createResolver('GenerateGameResolver', {
       typeName: 'Mutation',
       fieldName: 'generateGame',
+    });
+
+    // Add Universal Game Engine as data source
+    const engineDataSource = api.addLambdaDataSource('GameEngineDataSource', gameEngineLambda);
+    
+    // Update processGameAction resolver to use Lambda instead of DynamoDB
+    engineDataSource.createResolver('ProcessGameActionResolver', {
+      typeName: 'Mutation',
+      fieldName: 'processGameAction',
+      runtime: appsync.FunctionRuntime.JS_1_0_0,
+      code: appsync.Code.fromInline(`
+        import { util } from '@aws-appsync/utils';
+        
+        export function request(ctx) {
+          return {
+            operation: 'Invoke',
+            payload: {
+              gameId: ctx.args.gameId,
+              action: ctx.args.action
+            }
+          };
+        }
+        
+        export function response(ctx) {
+          if (ctx.error) {
+            util.error(ctx.error.message, ctx.error.type);
+          }
+          return ctx.result;
+        }
+      `),
     });
 
     // Outputs
