@@ -608,6 +608,8 @@
     let subscription = null;
     let currentGeneratedGame = null;
     let selectedGameType = null;
+    let activeGameFrame = null; // Reference to current game iframe
+    let currentGameId = null; // Current game ID for state updates
     let selectedFeatures = new Set();
     let mainInterfaceEvents = null; // GameEventBridge for main UI
 
@@ -831,22 +833,6 @@
       } catch (error) {
         console.error('Failed to send state to game:', error);
       }
-      
-      // TODO: Implement actual backend call
-      // const mutation = `
-      //   mutation SendGameEvents($input: GameEventsInput!) {
-      //     sendGameEvents(input: $input) {
-      //       success
-      //     }
-      //   }
-      // `;
-      //
-      // await graphqlRequest(mutation, {
-      //   input: {
-      //     sessionId: sessionId,
-      //     events: JSON.stringify(events)
-      //   }
-      // });
     }
     
     function injectGameConfig(iframe, gameId, playerId) {
@@ -1619,6 +1605,7 @@
           
           // Set active frame and inject config
           activeGameFrame = iframe;
+          currentGameId = data.generateGame.gameId;
           injectGameConfig(iframe, data.generateGame.gameId, 'player1');
           
           // Emit AI generation success event
@@ -1775,6 +1762,7 @@
                   
                   // Set active frame and inject config
                   activeGameFrame = iframe;
+                  currentGameId = gameId;
                   injectGameConfig(iframe, gameId, 'player1');
                   
                   document.getElementById('convertedGameUrl').href = gameUrl;
