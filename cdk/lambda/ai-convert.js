@@ -968,7 +968,13 @@ ARCHITECTURE NOTES:
 - The parent handles ALL API calls to the game server
 - Use GameEventBridge (automatically available) to send events: gameEvents.emit('INTERACTION', {...})
 - Listen for parent messages: window.addEventListener('message', handleParentMessage)
-- Display the current game ID from window.GAME_CONFIG.gameId if available
+
+GAME ID SHARING (REQUIRED):
+- Add a prominent "Game ID" display at the top: <div id="game-id-display">Game ID: <span id="game-id-value">Loading...</span> <button onclick="copyGameId()">Copy</button></div>
+- Get game ID from window.GAME_CONFIG.gameId when available
+- Add copy-to-clipboard functionality for easy sharing
+- Show "Share this Game ID with other players to join" message
+- Include JavaScript functions: updateGameId() to get ID from window.GAME_CONFIG.gameId, copyGameId() for clipboard copy, and call updateGameId() every second
 
 ORIGINAL HTML:
 ${html}

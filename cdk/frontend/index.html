@@ -764,13 +764,73 @@
     }
     
     async function sendEventsToBackend(events) {
-      // This would be implemented based on your backend API
-      // For now, just log the events
-      console.log('Would send to backend:', {
-        sessionId: sessionId,
-        events: events,
-        timestamp: Date.now()
+      // Convert events to processGameAction calls
+      for (const event of events) {
+        try {
+          if (event.type === 'INTERACTION' && event.metadata.gameId) {
+            await processGameActionFromEvent(event);
+          }
+        } catch (error) {
+          console.error('Failed to process game action:', error);
+        }
+      }
+    }
+    
+    async function processGameActionFromEvent(event) {
+      const gameId = event.metadata.gameId;
+      const playerId = event.metadata.playerId;
+      
+      // Convert event to action format
+      const action = {
+        type: 'UPDATE',
+        playerId: playerId,
+        data: {
+          action: event.data.action,
+          target: event.data.target,
+          position: event.data.position,
+          ...event.data
+        }
+      };
+      
+      console.log('Processing game action:', { gameId, action });
+      
+      const response = await makeGraphQLRequest(`
+        mutation ProcessAction($gameId: ID!, $action: AWSJSON!) {
+          processGameAction(gameId: $gameId, action: $action)
+        }
+      `, {
+        gameId: gameId,
+        action: JSON.stringify(action)
       });
+      
+      // Send response back to game iframe if successful
+      if (response && response.processGameAction) {
+        const result = JSON.parse(response.processGameAction);
+        if (result.success && activeGameFrame) {
+          sendStateToGame(result);
+        }
+      }
+    }
+    
+    function sendStateToGame(gameState) {
+      if (!activeGameFrame) return;
+      
+      const message = {
+        target: 'GameEventBridge',
+        type: 'STATE_UPDATE',
+        gameId: gameState.gameId || currentGameId,
+        state: gameState.state,
+        players: gameState.players,
+        timestamp: Date.now()
+      };
+      
+      console.log('Sending state to game iframe:', message);
+      
+      try {
+        activeGameFrame.contentWindow.postMessage(message, '*');
+      } catch (error) {
+        console.error('Failed to send state to game:', error);
+      }
       
       // TODO: Implement actual backend call
       // const mutation = `
