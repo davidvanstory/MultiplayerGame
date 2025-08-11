@@ -32,119 +32,58 @@
     }
 
     createElement() {
-      // Main container
+      // Main container - vertical side panel
       this.container = document.createElement('div');
       this.container.id = 'debug-console';
-      this.container.className = `debug-console debug-console-${this.config.position}`;
+      this.container.className = 'debug-console-panel';
+      
+      // Toggle button (always visible)
+      this.toggleButton = document.createElement('div');
+      this.toggleButton.className = 'debug-toggle-btn';
+      this.toggleButton.innerHTML = '🛠️';
+      this.toggleButton.title = 'Toggle Debug Console';
       
       // Header
       const header = document.createElement('div');
-      header.className = 'debug-console-header';
+      header.className = 'debug-header';
       header.innerHTML = `
-        <span class="debug-console-title">🛠️ Game Debug Console</span>
-        <div class="debug-console-controls">
-          <button class="debug-console-btn" id="debug-clear">Clear</button>
-          <button class="debug-console-btn" id="debug-export">Export</button>
-          <button class="debug-console-btn" id="debug-collapse">−</button>
-          <button class="debug-console-btn" id="debug-close">×</button>
+        <div class="debug-title">
+          <span class="debug-icon">🛠️</span>
+          <span class="debug-text">Game Debug</span>
+        </div>
+        <div class="debug-controls">
+          <button class="debug-btn" id="debug-clear" title="Clear logs">🗑️</button>
+          <button class="debug-btn" id="debug-export" title="Export logs">💾</button>
+          <button class="debug-btn" id="debug-close" title="Close panel">✕</button>
         </div>
       `;
       
-      // Tabs
-      const tabs = document.createElement('div');
-      tabs.className = 'debug-console-tabs';
-      tabs.innerHTML = `
-        <button class="debug-tab active" data-tab="logs">Logs</button>
-        <button class="debug-tab" data-tab="state">State</button>
-        <button class="debug-tab" data-tab="events">Events</button>
-      `;
-      
-      // Content area
-      this.content = document.createElement('div');
-      this.content.className = 'debug-console-content';
-      
-      // Logs panel
-      this.logsPanel = document.createElement('div');
-      this.logsPanel.className = 'debug-panel active';
-      this.logsPanel.id = 'debug-logs';
-      
-      // State panel
-      this.statePanel = document.createElement('div');
-      this.statePanel.className = 'debug-panel';
-      this.statePanel.id = 'debug-state';
-      this.statePanel.innerHTML = '<div class="debug-no-data">No state data yet...</div>';
-      
-      // Events panel
-      this.eventsPanel = document.createElement('div');
-      this.eventsPanel.className = 'debug-panel';
-      this.eventsPanel.id = 'debug-events';
-      this.eventsPanel.innerHTML = '<div class="debug-no-data">No events captured yet...</div>';
+      // Single unified log list (no tabs, no nested scrolling)
+      this.logList = document.createElement('div');
+      this.logList.className = 'debug-log-list';
+      this.logList.innerHTML = '<div class="debug-welcome">Debug console initialized. Game events will appear here...</div>';
       
       // Assemble
-      this.content.appendChild(this.logsPanel);
-      this.content.appendChild(this.statePanel);
-      this.content.appendChild(this.eventsPanel);
-      
       this.container.appendChild(header);
-      this.container.appendChild(tabs);
-      this.container.appendChild(this.content);
+      this.container.appendChild(this.logList);
       
-      // Add to DOM
+      // Add both to DOM
+      document.body.appendChild(this.toggleButton);
       document.body.appendChild(this.container);
+      
+      // Start collapsed
+      this.isCollapsed = true;
+      this.container.classList.add('collapsed');
     }
 
     attachEventListeners() {
+      // Toggle button
+      this.toggleButton.addEventListener('click', () => this.toggle());
+      
       // Control buttons
       document.getElementById('debug-clear').addEventListener('click', () => this.clear());
       document.getElementById('debug-export').addEventListener('click', () => this.exportLogs());
-      document.getElementById('debug-collapse').addEventListener('click', () => this.toggle());
       document.getElementById('debug-close').addEventListener('click', () => this.hide());
-      
-      // Tab switching
-      this.container.querySelectorAll('.debug-tab').forEach(tab => {
-        tab.addEventListener('click', (e) => {
-          this.switchTab(e.target.dataset.tab);
-        });
-      });
-      
-      // Make draggable
-      let isDragging = false;
-      let dragOffset = { x: 0, y: 0 };
-      
-      const header = this.container.querySelector('.debug-console-header');
-      header.addEventListener('mousedown', (e) => {
-        isDragging = true;
-        dragOffset.x = e.clientX - this.container.offsetLeft;
-        dragOffset.y = e.clientY - this.container.offsetTop;
-        document.addEventListener('mousemove', onMouseMove);
-        document.addEventListener('mouseup', onMouseUp);
-      });
-      
-      const onMouseMove = (e) => {
-        if (isDragging) {
-          this.container.style.left = (e.clientX - dragOffset.x) + 'px';
-          this.container.style.top = (e.clientY - dragOffset.y) + 'px';
-          this.container.style.position = 'fixed';
-        }
-      };
-      
-      const onMouseUp = () => {
-        isDragging = false;
-        document.removeEventListener('mousemove', onMouseMove);
-        document.removeEventListener('mouseup', onMouseUp);
-      };
-    }
-
-    switchTab(tabName) {
-      // Update tab buttons
-      this.container.querySelectorAll('.debug-tab').forEach(tab => {
-        tab.classList.toggle('active', tab.dataset.tab === tabName);
-      });
-      
-      // Update panels
-      this.container.querySelectorAll('.debug-panel').forEach(panel => {
-        panel.classList.toggle('active', panel.id === `debug-${tabName}`);
-      });
     }
 
     addLog(source, message, data = null) {
@@ -154,6 +93,7 @@
         source,
         message,
         data,
+        type: 'log',
         id: Date.now() + Math.random()
       };
       
@@ -164,7 +104,7 @@
         this.logs = this.logs.slice(0, this.config.maxLogs);
       }
       
-      this.renderLogs();
+      this.renderUnifiedList();
     }
 
     addStateUpdate(source, oldState, newState, changes) {
@@ -174,77 +114,92 @@
         oldState,
         newState,
         changes,
+        type: 'state',
         id: Date.now() + Math.random()
       };
       
-      this.stateHistory.unshift(stateEntry);
+      this.logs.unshift(stateEntry);
       
-      // Limit state history
-      if (this.stateHistory.length > 20) {
-        this.stateHistory = this.stateHistory.slice(0, 20);
+      // Limit logs
+      if (this.logs.length > this.config.maxLogs) {
+        this.logs = this.logs.slice(0, this.config.maxLogs);
       }
       
-      this.renderState();
+      this.renderUnifiedList();
     }
 
-    renderLogs() {
-      const logsHtml = this.logs.map(log => {
-        const dataHtml = log.data ? 
-          `<div class="debug-log-data">${this.formatData(log.data)}</div>` : '';
-        
-        return `
-          <div class="debug-log-entry debug-source-${log.source.toLowerCase()}">
-            <div class="debug-log-header">
-              <span class="debug-log-time">${log.timestamp}</span>
-              <span class="debug-log-source">${log.source}</span>
-            </div>
-            <div class="debug-log-message">${log.message}</div>
-            ${dataHtml}
-          </div>
-        `;
+    renderUnifiedList() {
+      const itemsHtml = this.logs.map(item => {
+        if (item.type === 'log') {
+          return this.renderLogItem(item);
+        } else if (item.type === 'state') {
+          return this.renderStateItem(item);
+        }
+        return '';
       }).join('');
       
-      this.logsPanel.innerHTML = logsHtml || '<div class="debug-no-data">No logs yet...</div>';
+      this.logList.innerHTML = itemsHtml || '<div class="debug-welcome">No activity yet...</div>';
       
-      // Auto-scroll to top for latest logs
-      this.logsPanel.scrollTop = 0;
+      // Auto-scroll to top for latest items
+      this.logList.scrollTop = 0;
     }
 
-    renderState() {
-      if (this.stateHistory.length === 0) {
-        this.statePanel.innerHTML = '<div class="debug-no-data">No state data yet...</div>';
-        return;
-      }
+    renderLogItem(log) {
+      const dataHtml = log.data ? 
+        `<div class="debug-data">${this.formatData(log.data)}</div>` : '';
       
-      const latest = this.stateHistory[0];
-      const changesHtml = latest.changes.map(change => {
+      const icon = this.getSourceIcon(log.source);
+      
+      return `
+        <div class="debug-item debug-item-log debug-source-${log.source.toLowerCase()}">
+          <div class="debug-item-header">
+            <span class="debug-icon">${icon}</span>
+            <span class="debug-time">${log.timestamp}</span>
+            <span class="debug-source">${log.source}</span>
+          </div>
+          <div class="debug-message">${log.message}</div>
+          ${dataHtml}
+        </div>
+      `;
+    }
+
+    renderStateItem(state) {
+      const changesHtml = state.changes.map(change => {
+        const changeIcon = change.type === 'property_change' ? '🔄' : '❌';
         return `
-          <div class="debug-state-change debug-change-${change.type}">
-            <strong>${change.property || change.type}:</strong> 
+          <div class="debug-change">
+            ${changeIcon} <strong>${change.property || change.type}:</strong> 
             ${change.old !== undefined ? JSON.stringify(change.old) : ''} 
             → ${change.new !== undefined ? JSON.stringify(change.new) : ''}
           </div>
         `;
       }).join('');
       
-      this.statePanel.innerHTML = `
-        <div class="debug-state-current">
-          <h4>🎮 Current Game State (${latest.timestamp})</h4>
-          <pre>${JSON.stringify(latest.newState, null, 2)}</pre>
-        </div>
-        <div class="debug-state-changes">
-          <h4>🔄 Recent Changes</h4>
-          ${changesHtml}
-        </div>
-        <div class="debug-state-history">
-          <h4>📚 State History</h4>
-          ${this.stateHistory.map((entry, i) => `
-            <div class="debug-history-entry ${i === 0 ? 'current' : ''}">
-              ${entry.timestamp} - ${entry.source} (${entry.changes.length} changes)
-            </div>
-          `).join('')}
+      return `
+        <div class="debug-item debug-item-state">
+          <div class="debug-item-header">
+            <span class="debug-icon">🎮</span>
+            <span class="debug-time">${state.timestamp}</span>
+            <span class="debug-source">${state.source}</span>
+          </div>
+          <div class="debug-message">State Update (${state.changes.length} changes)</div>
+          <div class="debug-changes">
+            ${changesHtml}
+          </div>
         </div>
       `;
+    }
+
+    getSourceIcon(source) {
+      const icons = {
+        'MULTIPLAYER': '🌐',
+        'GAME': '🎮',
+        'SYSTEM': '⚙️',
+        'ERROR': '❌',
+        'USER': '👤',
+        'SERVER': '🖥️'
+      };
+      return icons[source.toUpperCase()] || '📝';
     }
 
     formatData(data) {
@@ -256,34 +211,30 @@
 
     clear() {
       this.logs = [];
-      this.stateHistory = [];
-      this.renderLogs();
-      this.renderState();
-      this.eventsPanel.innerHTML = '<div class="debug-no-data">No events captured yet...</div>';
+      this.renderUnifiedList();
     }
 
     toggle() {
       this.isCollapsed = !this.isCollapsed;
       this.container.classList.toggle('collapsed', this.isCollapsed);
-      const button = document.getElementById('debug-collapse');
-      button.textContent = this.isCollapsed ? '+' : '−';
     }
 
     hide() {
       this.isVisible = false;
-      this.container.style.display = 'none';
+      this.container.classList.add('hidden');
+      this.toggleButton.style.display = 'block';
     }
 
     show() {
       this.isVisible = true;
-      this.container.style.display = 'block';
+      this.container.classList.remove('hidden');
+      this.toggleButton.style.display = 'none';
     }
 
     exportLogs() {
       const exportData = {
         timestamp: new Date().toISOString(),
         logs: this.logs,
-        stateHistory: this.stateHistory,
         gameConfig: window.GAME_CONFIG
       };
       
@@ -302,121 +253,151 @@
 
     injectStyles() {
       const styles = `
-        .debug-console {
+        /* Toggle Button */
+        .debug-toggle-btn {
           position: fixed;
-          background: #1a1a1a;
-          border: 2px solid #333;
-          border-radius: 8px;
-          font-family: 'Monaco', 'Consolas', monospace;
-          font-size: 12px;
-          color: #fff;
-          z-index: 10000;
-          box-shadow: 0 4px 20px rgba(0,0,0,0.5);
-          width: ${this.config.width};
-          height: ${this.config.height};
-          min-width: 300px;
-          min-height: 200px;
-          display: flex;
-          flex-direction: column;
-        }
-        
-        .debug-console-bottom-right {
-          bottom: 20px;
+          top: 20px;
           right: 20px;
-        }
-        
-        .debug-console-bottom-left {
-          bottom: 20px;
-          left: 20px;
-        }
-        
-        .debug-console.collapsed .debug-console-content,
-        .debug-console.collapsed .debug-console-tabs {
-          display: none;
-        }
-        
-        .debug-console-header {
-          background: #333;
-          padding: 8px 12px;
-          border-radius: 6px 6px 0 0;
+          width: 40px;
+          height: 40px;
+          background: #2d2d2d;
+          border: 2px solid #4CAF50;
+          border-radius: 50%;
+          color: #4CAF50;
+          font-size: 18px;
           display: flex;
-          justify-content: space-between;
           align-items: center;
-          cursor: move;
+          justify-content: center;
+          cursor: pointer;
+          z-index: 10001;
+          box-shadow: 0 2px 10px rgba(0,0,0,0.3);
           user-select: none;
         }
         
-        .debug-console-title {
+        .debug-toggle-btn:hover {
+          background: #3d3d3d;
+          transform: scale(1.1);
+        }
+        
+        /* Main Panel */
+        .debug-console-panel {
+          position: fixed;
+          top: 0;
+          right: 0;
+          width: 400px;
+          height: 100vh;
+          background: #1a1a1a;
+          border-left: 3px solid #4CAF50;
+          font-family: 'Monaco', 'Consolas', monospace;
+          font-size: 13px;
+          color: #fff;
+          z-index: 10000;
+          display: flex;
+          flex-direction: column;
+          box-shadow: -4px 0 20px rgba(0,0,0,0.5);
+          transition: transform 0.3s ease;
+        }
+        
+        .debug-console-panel.collapsed {
+          transform: translateX(100%);
+        }
+        
+        .debug-console-panel.hidden {
+          display: none;
+        }
+        
+        /* Header */
+        .debug-header {
+          background: #2d2d2d;
+          padding: 12px 16px;
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          border-bottom: 2px solid #4CAF50;
+        }
+        
+        .debug-title {
+          display: flex;
+          align-items: center;
+          gap: 8px;
           font-weight: bold;
           color: #4CAF50;
         }
         
-        .debug-console-controls {
+        .debug-controls {
           display: flex;
-          gap: 4px;
+          gap: 8px;
         }
         
-        .debug-console-btn {
-          background: #555;
-          border: none;
+        .debug-btn {
+          background: #3d3d3d;
+          border: 1px solid #555;
           color: #fff;
-          padding: 4px 8px;
-          border-radius: 3px;
+          padding: 6px 8px;
+          border-radius: 4px;
           cursor: pointer;
-          font-size: 11px;
-        }
-        
-        .debug-console-btn:hover {
-          background: #666;
-        }
-        
-        .debug-console-tabs {
-          display: flex;
-          background: #2a2a2a;
-          border-bottom: 1px solid #333;
-        }
-        
-        .debug-tab {
-          background: none;
-          border: none;
-          color: #ccc;
-          padding: 8px 16px;
-          cursor: pointer;
+          font-size: 14px;
           transition: all 0.2s;
         }
         
-        .debug-tab.active {
-          background: #4CAF50;
-          color: white;
+        .debug-btn:hover {
+          background: #4d4d4d;
+          border-color: #4CAF50;
         }
         
-        .debug-tab:hover:not(.active) {
-          background: #333;
-        }
-        
-        .debug-console-content {
+        /* Log List */
+        .debug-log-list {
           flex: 1;
-          overflow: hidden;
-          display: flex;
-        }
-        
-        .debug-panel {
-          display: none;
-          width: 100%;
-          padding: 8px;
           overflow-y: auto;
+          padding: 12px;
           background: #1a1a1a;
         }
         
-        .debug-panel.active {
-          display: block;
+        .debug-log-list::-webkit-scrollbar {
+          width: 8px;
         }
         
-        .debug-log-entry {
-          margin-bottom: 8px;
-          padding: 6px;
-          border-left: 3px solid #666;
-          background: rgba(255,255,255,0.02);
+        .debug-log-list::-webkit-scrollbar-track {
+          background: #2d2d2d;
+        }
+        
+        .debug-log-list::-webkit-scrollbar-thumb {
+          background: #4CAF50;
+          border-radius: 4px;
+        }
+        
+        /* Welcome Message */
+        .debug-welcome {
+          text-align: center;
+          color: #666;
+          font-style: italic;
+          padding: 20px;
+          background: rgba(76, 175, 80, 0.1);
+          border-radius: 8px;
+          margin-bottom: 12px;
+        }
+        
+        /* Debug Items */
+        .debug-item {
+          margin-bottom: 12px;
+          padding: 8px 12px;
+          background: rgba(255,255,255,0.03);
+          border-radius: 6px;
+          border-left: 4px solid #666;
+          transition: all 0.2s;
+        }
+        
+        .debug-item:hover {
+          background: rgba(255,255,255,0.05);
+        }
+        
+        .debug-item-log {
+          border-left-color: #2196F3;
+        }
+        
+        .debug-item-state {
+          border-left-color: #4CAF50;
+          background: rgba(76, 175, 80, 0.08);
         }
         
         .debug-source-multiplayer {
@@ -431,88 +412,86 @@
           border-left-color: #FF9800;
         }
         
-        .debug-log-header {
+        .debug-source-error {
+          border-left-color: #F44336;
+          background: rgba(244, 67, 54, 0.08);
+        }
+        
+        /* Item Headers */
+        .debug-item-header {
           display: flex;
-          justify-content: space-between;
-          font-size: 10px;
-          opacity: 0.7;
-          margin-bottom: 2px;
-        }
-        
-        .debug-log-source {
-          background: #333;
-          padding: 2px 6px;
-          border-radius: 10px;
-        }
-        
-        .debug-log-message {
-          font-weight: 500;
-          margin-bottom: 4px;
-        }
-        
-        .debug-log-data {
-          background: #0a0a0a;
-          padding: 6px;
-          border-radius: 3px;
+          align-items: center;
+          gap: 8px;
+          margin-bottom: 6px;
           font-size: 11px;
-          max-height: 100px;
+          opacity: 0.8;
+        }
+        
+        .debug-icon {
+          font-size: 14px;
+        }
+        
+        .debug-time {
+          color: #888;
+          font-family: monospace;
+        }
+        
+        .debug-source {
+          background: #3d3d3d;
+          padding: 2px 8px;
+          border-radius: 10px;
+          font-size: 10px;
+          font-weight: bold;
+        }
+        
+        /* Messages and Data */
+        .debug-message {
+          font-weight: 500;
+          margin-bottom: 6px;
+          line-height: 1.4;
+        }
+        
+        .debug-data {
+          background: #0f0f0f;
+          padding: 8px;
+          border-radius: 4px;
+          font-size: 11px;
+          border: 1px solid #333;
+          max-height: 200px;
           overflow-y: auto;
         }
         
-        .debug-log-data pre {
+        .debug-data pre {
           margin: 0;
           white-space: pre-wrap;
           word-wrap: break-word;
+          color: #ccc;
         }
         
-        .debug-no-data {
-          text-align: center;
-          color: #666;
-          font-style: italic;
-          padding: 20px;
+        /* State Changes */
+        .debug-changes {
+          margin-top: 6px;
         }
         
-        .debug-state-current pre {
-          background: #0a0a0a;
-          padding: 8px;
-          border-radius: 4px;
-          max-height: 120px;
-          overflow-y: auto;
-          margin: 8px 0;
-        }
-        
-        .debug-state-changes {
-          margin-top: 12px;
-        }
-        
-        .debug-state-change {
+        .debug-change {
           padding: 4px 8px;
           margin: 2px 0;
+          background: rgba(255,255,255,0.03);
           border-radius: 3px;
           font-size: 11px;
+          line-height: 1.3;
         }
         
-        .debug-change-property_change {
-          background: rgba(76, 175, 80, 0.1);
-          border-left: 3px solid #4CAF50;
-        }
-        
-        .debug-change-property_removed {
-          background: rgba(244, 67, 54, 0.1);
-          border-left: 3px solid #F44336;
-        }
-        
-        .debug-history-entry {
-          padding: 4px 8px;
-          margin: 2px 0;
-          background: rgba(255,255,255,0.02);
-          border-radius: 3px;
-          font-size: 11px;
-        }
-        
-        .debug-history-entry.current {
-          background: rgba(76, 175, 80, 0.1);
-          border-left: 3px solid #4CAF50;
+        /* Responsive */
+        @media (max-width: 768px) {
+          .debug-console-panel {
+            width: 100%;
+          }
+          
+          .debug-toggle-btn {
+            top: 10px;
+            right: 10px;
+          }
         }
       `;
       
