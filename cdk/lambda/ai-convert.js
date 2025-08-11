@@ -921,11 +921,11 @@ function buildConversionPrompt(html, analysis) {
   
   // Add universal requirements
   prompt += `CORE MULTIPLAYER REQUIREMENTS:
-1. WebSocket Integration:
-   - Establish WebSocket connection for real-time communication
-   - Handle connection/disconnection gracefully
-   - Implement automatic reconnection logic
-   - Add connection status indicators
+1. Parent Frame Communication:
+   - Use postMessage to communicate with parent window
+   - Send game events to parent via GameEventBridge
+   - Listen for state updates from parent frame
+   - NO WebSockets or direct server connections
 
 2. Player Management:
    - Support 2-8 players based on game type
@@ -934,10 +934,10 @@ function buildConversionPrompt(html, analysis) {
    - Handle player joining/leaving mid-game
 
 3. State Synchronization:
-   - Centralized game state management
-   - Optimistic updates with server reconciliation
-   - Handle state conflicts gracefully
-   - Implement state versioning
+   - Receive state updates from parent window (polling-based)
+   - Apply state updates to game UI immediately
+   - Send action events to parent for server processing
+   - No direct API calls - parent handles all server communication
 
 4. Data Attributes (PRESERVE EXISTING):
    - Keep all existing data-game-action attributes
@@ -958,15 +958,22 @@ function buildConversionPrompt(html, analysis) {
    - Error messages for failed actions
 
 7. Game Flow:
-   - Lobby system for game creation/joining
-   - Ready check before game start
-   - Pause/resume functionality
-   - Proper game end handling with results
+   - Display game ID prominently for sharing
+   - Show connection status (connected/disconnected from parent)
+   - Handle game start when enough players join
+   - Show waiting for players message
+
+ARCHITECTURE NOTES:
+- This game will be loaded in an iframe inside a parent multiplayer application
+- The parent handles ALL API calls to the game server
+- Use GameEventBridge (automatically available) to send events: gameEvents.emit('INTERACTION', {...})
+- Listen for parent messages: window.addEventListener('message', handleParentMessage)
+- Display the current game ID from window.GAME_CONFIG.gameId if available
 
 ORIGINAL HTML:
 ${html}
 
-Return ONLY the complete modified HTML file with all JavaScript and CSS inline. Ensure the game is fully functional and playable in multiplayer mode.`;
+Return ONLY the complete modified HTML file with all JavaScript and CSS inline. Ensure the game is fully functional and playable in multiplayer mode with the parent-iframe architecture described above.`;
   
   return prompt;
 }
