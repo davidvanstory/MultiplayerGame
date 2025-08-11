@@ -269,8 +269,10 @@
         });
       });
       
-      // Start observing
-      observer.observe(document.body, {
+      // Start observing (wait for body to be available)
+      const startObserving = () => {
+        if (document.body) {
+          observer.observe(document.body, {
         subtree: true,
         childList: true,
         characterData: true,
