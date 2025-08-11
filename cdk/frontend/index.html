@@ -955,18 +955,86 @@
         // Show the preview container
         document.getElementById('joinedGamePreview').classList.add('active');
         
-        // Wait for iframe to load and inject config
-        iframe.addEventListener('load', async () => {
-          activeGameFrame = iframe;
-          currentGameId = gameId;
-          await injectGameConfig(iframe, gameId);
-          console.log('Successfully joined game:', gameId);
-        });
+        // Set up config injection and iframe tracking
+        activeGameFrame = iframe;
+        currentGameId = gameId;
+        await injectGameConfig(iframe, gameId);
+        console.log('Successfully joined game:', gameId);
         
       } catch (error) {
         console.error('Failed to join game:', error);
         alert('Failed to join game. Please try again.');
       }
+    }
+    
+    async function injectGameConfig(iframe, gameId, playerId) {
+      // Get dynamic player ID if not provided
+      if (!playerId) {
+        playerId = await getPlayerIdForGame(gameId);
+      }
+      
+      console.log('Setting up GAME_CONFIG injection for iframe');
+      
+      // Inject configuration script immediately if iframe is already loaded
+      const injectConfig = () => {
+        console.log('Injecting GAME_CONFIG into iframe');
+        
+        const config = {
+          gameId: gameId,
+          playerId: playerId || `player-${Math.random().toString(36).substring(2, 11)}`,
+          sessionId: sessionId,
+          batchEvents: true,
+          batchInterval: 100,
+          autoIntercept: true
+        };
+        
+        try {
+          iframe.contentWindow.GAME_CONFIG = config;
+          iframe.contentWindow.DEBUG_MULTIPLAYER = true; // Enable debug mode
+          
+          console.log('GAME_CONFIG injected successfully:', config);
+        } catch (error) {
+          console.error('Failed to inject GAME_CONFIG:', error);
+        }
+      };
+      
+      // Try to inject immediately if already loaded, otherwise wait for load
+      try {
+        if (iframe.contentDocument && iframe.contentDocument.readyState === 'complete') {
+          injectConfig();
+        } else {
+          iframe.addEventListener('load', injectConfig);
+        }
+      } catch (error) {
+        console.error('Error setting up config injection:', error);
+        iframe.addEventListener('load', injectConfig);
+      }
+    }
+    
+    async function getPlayerIdForGame(gameId) {
+      try {
+        // Get current game state to determine player ID
+        const response = await makeGraphQLRequest(`
+          query GetGame($gameId: ID!) {
+            getGame(gameId: $gameId) {
+              players
+            }
+          }
+        `, { gameId });
+        
+        if (response && response.getGame && response.getGame.players) {
+          const players = JSON.parse(response.getGame.players);
+          const playerCount = Object.keys(players).length;
+          
+          // Generate next player ID
+          return `player${playerCount + 1}`;
+        }
+      } catch (error) {
+        console.error('Failed to get game state for player ID:', error);
+      }
+      
+      // Fallback to player1
+      return 'player1';
     }
     
     function generateSessionId() {
