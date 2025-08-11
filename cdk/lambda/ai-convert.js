@@ -1,5 +1,5 @@
-const https = require('https');
 const { S3Client, PutObjectCommand } = require('@aws-sdk/client-s3');
+const OpenAI = require('openai');
 const s3Client = new S3Client({ region: process.env.AWS_REGION || 'us-east-2' });
 
 exports.handler = async (event) => {
@@ -178,96 +178,59 @@ async function callOpenAI(prompt) {
     throw new Error('OPENAI_API_KEY is not configured');
   }
   
-  const requestBody = JSON.stringify({
-    model: "gpt-4o-mini",
-    messages: [
-      {
-        role: "system",
-        content: "You are an expert game developer who creates complete, playable HTML5 games. You write clean, well-commented code that follows best practices. Always return ONLY the HTML code without any markdown formatting."
-      },
-      { role: "user", content: prompt }
-    ],
-    temperature: 0.7,
-    max_tokens: 12000  // Increased for larger games
+  // Initialize OpenAI client
+  const openai = new OpenAI({
+    apiKey: process.env.OPENAI_API_KEY,
+    timeout: 60 * 1000, // 60 seconds
+    maxRetries: 2
   });
 
-  const options = {
-    hostname: 'api.openai.com',
-    port: 443,
-    path: '/v1/chat/completions',
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`,
-      'Content-Length': Buffer.byteLength(requestBody)
-    },
-    timeout: 60000  // 60 second timeout
-  };
-
-  console.log('Making OpenAI API request...');
-  
-  return new Promise((resolve, reject) => {
-    const req = https.request(options, (res) => {
-      let data = '';
-      
-      res.on('data', (chunk) => {
-        data += chunk;
-      });
-      
-      res.on('end', () => {
-        try {
-          console.log('OpenAI response status:', res.statusCode);
-          
-          if (res.statusCode !== 200) {
-            console.error('OpenAI API error response:', data);
-            reject(new Error(`OpenAI API returned status ${res.statusCode}: ${data}`));
-            return;
-          }
-          
-          const response = JSON.parse(data);
-          
-          if (response.error) {
-            console.error('OpenAI error:', response.error);
-            reject(new Error(`OpenAI error: ${response.error.message}`));
-            return;
-          }
-          
-          if (response.choices && response.choices[0] && response.choices[0].message) {
-            const content = response.choices[0].message.content;
-            console.log('OpenAI response received, content length:', content.length);
-            
-            // Clean up the response - remove any markdown code blocks if present
-            let cleanedContent = content;
-            if (content.includes('```html')) {
-              cleanedContent = content.replace(/```html\n?/g, '').replace(/```\n?/g, '');
-            } else if (content.includes('```')) {
-              cleanedContent = content.replace(/```\n?/g, '');
-            }
-            
-            resolve(cleanedContent.trim());
-          } else {
-            console.error('Invalid OpenAI response structure:', response);
-            reject(new Error('Invalid response from OpenAI - no content returned'));
-          }
-        } catch (error) {
-          console.error('Error parsing OpenAI response:', error);
-          reject(new Error(`Failed to parse OpenAI response: ${error.message}`));
+  try {
+    console.log('Making OpenAI API request using SDK...');
+    
+    const response = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: [
+        {
+          role: 'system',
+          content: 'You are an expert game developer who creates complete, playable HTML5 games. You write clean, well-commented code that follows best practices. Always return ONLY the HTML code without any markdown formatting.'
+        },
+        {
+          role: 'user',
+          content: prompt
         }
-      });
+      ],
+      temperature: 0.7,
+      max_tokens: 12000  // Increased for larger games
     });
+
+    if (!response.choices || !response.choices[0] || !response.choices[0].message) {
+      console.error('Invalid OpenAI response structure:', response);
+      throw new Error('Invalid response from OpenAI - no content returned');
+    }
+
+    const content = response.choices[0].message.content;
+    console.log('OpenAI response received, content length:', content.length);
     
-    req.on('error', (error) => {
-      console.error('Request error:', error);
-      reject(new Error(`Network error calling OpenAI: ${error.message}`));
-    });
+    // Clean up the response - remove any markdown code blocks if present
+    let cleanedContent = content;
+    if (content.includes('```html')) {
+      cleanedContent = content.replace(/```html\n?/g, '').replace(/```\n?/g, '');
+    } else if (content.includes('```')) {
+      cleanedContent = content.replace(/```\n?/g, '');
+    }
     
-    req.on('timeout', () => {
-      console.error('Request timeout');
-      req.destroy();
-      reject(new Error('OpenAI request timed out'));
-    });
-    
-    req.write(requestBody);
-    req.end();
-  });
+    return cleanedContent.trim();
+  } catch (error) {
+    console.error('OpenAI API error:', error);
+    if (error.response) {
+      console.error('Error response:', error.response.data);
+      throw new Error(`OpenAI API error: ${error.response.data?.error?.message || error.message}`);
+    } else if (error.request) {
+      console.error('Request error:', error.request);
+      throw new Error(`Network error calling OpenAI: ${error.message}`);
+    } else {
+      throw new Error(`OpenAI error: ${error.message}`);
+    }
+  }
 }

@@ -2,8 +2,107 @@
 <html>
 <head>
   <meta charset="UTF-8" />
-  <title>Multiplayer Game Platform - AI Powered</title>
+  <title>Multiplayer Game Platform - AI Powered [DEBUG MODE]</title>
   <style>
+    /* Debug Console Styles */
+    .debug-console {
+      position: fixed;
+      bottom: 0;
+      right: 0;
+      width: 400px;
+      height: 300px;
+      background: rgba(0, 0, 0, 0.95);
+      border: 2px solid #00ff00;
+      border-radius: 5px 0 0 0;
+      color: #00ff00;
+      font-family: 'Courier New', monospace;
+      font-size: 12px;
+      z-index: 10000;
+      display: flex;
+      flex-direction: column;
+    }
+    .debug-header {
+      background: #222;
+      padding: 5px 10px;
+      border-bottom: 1px solid #00ff00;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      cursor: move;
+    }
+    .debug-controls {
+      display: flex;
+      gap: 10px;
+    }
+    .debug-btn {
+      background: #333;
+      color: #00ff00;
+      border: 1px solid #00ff00;
+      padding: 2px 8px;
+      cursor: pointer;
+      font-size: 11px;
+    }
+    .debug-btn:hover {
+      background: #00ff00;
+      color: #000;
+    }
+    .debug-content {
+      flex: 1;
+      overflow-y: auto;
+      padding: 10px;
+    }
+    .debug-entry {
+      margin: 2px 0;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+    }
+    .debug-request { color: #00ffff; }
+    .debug-response { color: #ff00ff; }
+    .debug-error { color: #ff0000; }
+    .debug-success { color: #00ff00; }
+    .debug-info { color: #ffff00; }
+    .debug-state { color: #ffa500; }
+    
+    /* Game State Monitor */
+    .state-monitor {
+      position: fixed;
+      top: 10px;
+      right: 10px;
+      width: 300px;
+      background: rgba(0, 0, 0, 0.9);
+      border: 1px solid #0099ff;
+      border-radius: 5px;
+      color: #0099ff;
+      font-family: 'Courier New', monospace;
+      font-size: 11px;
+      padding: 10px;
+      z-index: 9999;
+    }
+    .state-monitor h4 {
+      margin: 0 0 10px 0;
+      color: #00ffff;
+    }
+    .state-monitor pre {
+      margin: 0;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+    }
+    
+    /* Toggle for debug mode */
+    .debug-toggle {
+      position: fixed;
+      top: 10px;
+      left: 10px;
+      z-index: 10001;
+      background: #000;
+      color: #00ff00;
+      border: 1px solid #00ff00;
+      padding: 5px 10px;
+      cursor: pointer;
+      font-family: monospace;
+    }
+    
+    /* All original styles from index.html */
     body { 
       font-family: sans-serif; 
       text-align: center; 
@@ -230,6 +329,33 @@
   </style>
 </head>
 <body>
+  <!-- Debug Toggle Button -->
+  <button class="debug-toggle" onclick="toggleDebug()">🐛 Debug: ON</button>
+  
+  <!-- Debug Console -->
+  <div class="debug-console" id="debugConsole">
+    <div class="debug-header">
+      <span>🐛 Debug Console</span>
+      <div class="debug-controls">
+        <button class="debug-btn" onclick="clearDebugLog()">Clear</button>
+        <button class="debug-btn" onclick="exportDebugLog()">Export</button>
+      </div>
+    </div>
+    <div class="debug-content" id="debugContent"></div>
+  </div>
+  
+  <!-- Game State Monitor -->
+  <div class="state-monitor" id="stateMonitor">
+    <h4>📊 Game State Monitor</h4>
+    <pre id="stateDisplay">{
+  "gameId": null,
+  "playerNumber": null,
+  "gameState": null,
+  "selectedGameType": null,
+  "selectedFeatures": []
+}</pre>
+  </div>
+
   <h1>🎮 Multiplayer Game Platform - AI Powered</h1>
   
   <div class="tab-container">
@@ -389,6 +515,58 @@
   </div>
 
   <script>
+    // Debug functionality
+    let debugEnabled = true;
+    
+    function debugLog(message, type = 'info') {
+      if (!debugEnabled) return;
+      
+      const timestamp = new Date().toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit', fractionalSecondDigits: 3 });
+      const debugContent = document.getElementById('debugContent');
+      const entry = document.createElement('div');
+      entry.className = `debug-entry debug-${type}`;
+      entry.textContent = `[${timestamp}] ${message}`;
+      debugContent.appendChild(entry);
+      debugContent.scrollTop = debugContent.scrollHeight;
+    }
+    
+    function clearDebugLog() {
+      document.getElementById('debugContent').innerHTML = '';
+      debugLog('Debug log cleared', 'info');
+    }
+    
+    function exportDebugLog() {
+      const content = document.getElementById('debugContent').textContent;
+      const blob = new Blob([content], { type: 'text/plain' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `debug-log-${Date.now()}.txt`;
+      a.click();
+      URL.revokeObjectURL(url);
+      debugLog('Debug log exported', 'success');
+    }
+    
+    function toggleDebug() {
+      debugEnabled = !debugEnabled;
+      const toggle = document.querySelector('.debug-toggle');
+      toggle.textContent = `🐛 Debug: ${debugEnabled ? 'ON' : 'OFF'}`;
+      document.getElementById('debugConsole').style.display = debugEnabled ? 'flex' : 'none';
+      document.getElementById('stateMonitor').style.display = debugEnabled ? 'block' : 'none';
+    }
+    
+    function updateStateMonitor() {
+      const state = {
+        gameId: gameId,
+        playerNumber: playerNumber,
+        gameState: gameState,
+        selectedGameType: selectedGameType,
+        selectedFeatures: Array.from(selectedFeatures),
+        currentTab: document.querySelector('.tab-content.active')?.id
+      };
+      document.getElementById('stateDisplay').textContent = JSON.stringify(state, null, 2);
+    }
+    
     // Configuration
     const API_ENDPOINT = 'https://wdmfu2wflrhxbi3hhvaqmk64re.appsync-api.us-east-2.amazonaws.com/graphql';
     const API_KEY = 'da2-4kwhajemrzbojl4vs7j7bjih5a';
@@ -403,6 +581,8 @@
 
     // Tab switching
     function switchTab(tabName) {
+      debugLog(`Switching to tab: ${tabName}`, 'info');
+      
       // Hide all tabs
       document.querySelectorAll('.tab-content').forEach(tab => {
         tab.classList.remove('active');
@@ -414,32 +594,50 @@
       // Show selected tab
       document.getElementById(tabName + 'Tab').classList.add('active');
       event.target.classList.add('active');
+      
+      updateStateMonitor();
     }
 
-    // Simple GraphQL client with error logging
+    // Enhanced GraphQL client with detailed logging
     async function graphqlRequest(query, variables = {}) {
+      const queryName = query.match(/mutation (\w+)|query (\w+)/)?.[1] || query.match(/mutation (\w+)|query (\w+)/)?.[2] || 'Unknown';
+      debugLog(`GraphQL Request: ${queryName}`, 'request');
+      debugLog(`Variables: ${JSON.stringify(variables)}`, 'request');
       console.log('GraphQL Request:', { query: query.substring(0, 100), variables });
-      const response = await fetch(API_ENDPOINT, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': API_KEY
-        },
-        body: JSON.stringify({ query, variables })
-      });
-      const result = await response.json();
-      console.log('GraphQL Response:', result);
-      if (result.errors) {
-        console.error('GraphQL errors:', result.errors);
-        const errorMsg = result.errors[0].message || 'Unknown GraphQL error';
-        alert('API Error: ' + errorMsg);
-        throw new Error(errorMsg);
+      
+      try {
+        const response = await fetch(API_ENDPOINT, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-api-key': API_KEY
+          },
+          body: JSON.stringify({ query, variables })
+        });
+        
+        const result = await response.json();
+        console.log('GraphQL Response:', result);
+        
+        if (result.errors) {
+          console.error('GraphQL errors:', result.errors);
+          debugLog(`GraphQL Errors: ${JSON.stringify(result.errors)}`, 'error');
+          const errorMsg = result.errors[0].message || 'Unknown GraphQL error';
+          alert('API Error: ' + errorMsg);
+          throw new Error(errorMsg);
+        }
+        
+        debugLog(`Response: ${JSON.stringify(result.data).substring(0, 200)}`, 'response');
+        updateStateMonitor();
+        return result.data;
+      } catch (error) {
+        debugLog(`Request Failed: ${error.message}`, 'error');
+        throw error;
       }
-      return result.data;
     }
 
     // Create new game
     document.getElementById('createGame').addEventListener('click', async () => {
+      debugLog('Creating new game...', 'info');
       try {
         const mutation = `
           mutation CreateGame($input: CreateGameInput!) {
@@ -459,6 +657,7 @@
           'game-' + Date.now() + '-' + Math.random().toString(36).substring(2, 11);
         const playerId = 'player-' + Math.random().toString(36).substring(2, 11);
         
+        debugLog(`Generated IDs - Game: ${newGameId}, Player: ${playerId}`, 'info');
         console.log('Creating game with ID:', newGameId);
         
         const data = await graphqlRequest(mutation, {
@@ -489,6 +688,9 @@
         const parsedState = JSON.parse(data.createGame.gameState);
         gameState = parsedState;
         
+        debugLog(`Game created successfully! ID: ${gameId}`, 'success');
+        debugLog(`Game State: ${JSON.stringify(parsedState)}`, 'state');
+        
         document.getElementById('setup').style.display = 'none';
         document.getElementById('gameArea').style.display = 'block';
         document.getElementById('gameId').textContent = gameId;
@@ -497,7 +699,9 @@
         
         startGame();
         subscribeToUpdates();
+        updateStateMonitor();
       } catch (error) {
+        debugLog(`Failed to create game: ${error.message}`, 'error');
         alert('Failed to create game: ' + error.message);
       }
     });
@@ -506,6 +710,7 @@
     document.getElementById('joinGame').addEventListener('click', async () => {
       console.log('Join game button clicked');
       const inputGameId = document.getElementById('joinGameId').value.trim();
+      debugLog(`Attempting to join game: ${inputGameId}`, 'info');
       console.log('Game ID entered:', inputGameId);
       if (!inputGameId) {
         alert('Please enter a game ID');
@@ -527,6 +732,8 @@
         `;
         
         const playerId = 'player-' + Math.random().toString(36).substring(2, 11);
+        debugLog(`Generated Player ID: ${playerId}`, 'info');
+        
         const data = await graphqlRequest(mutation, {
           gameId: inputGameId,
           playerInfo: JSON.stringify({
@@ -542,6 +749,9 @@
         const parsedState = JSON.parse(data.joinGame.gameState);
         gameState = parsedState;
         
+        debugLog(`Joined game successfully! Player 2 ID: ${playerId}`, 'success');
+        debugLog(`Game State: ${JSON.stringify(parsedState)}`, 'state');
+        
         document.getElementById('setup').style.display = 'none';
         document.getElementById('gameArea').style.display = 'block';
         document.getElementById('gameId').textContent = gameId;
@@ -550,7 +760,9 @@
         
         startGame();
         subscribeToUpdates();
+        updateStateMonitor();
       } catch (error) {
+        debugLog(`Failed to join game: ${error.message}`, 'error');
         alert('Failed to join game: ' + error.message);
       }
     });
@@ -558,6 +770,8 @@
     // Take turn
     document.getElementById('takeTurn').addEventListener('click', async () => {
       if (!gameState || !gameState.gameActive) return;
+      
+      debugLog(`Taking turn - Current counter: ${gameState.counter}`, 'info');
       
       try {
         const newCounter = gameState.counter + 1;
@@ -579,6 +793,8 @@
           currentTurn: isWin ? playerNumber : (playerNumber === 1 ? 2 : 1)
         };
         
+        debugLog(`Updating game state: ${JSON.stringify(updatedState)}`, 'state');
+        
         const data = await graphqlRequest(mutation, {
           input: {
             gameId: gameId,
@@ -589,18 +805,22 @@
         // Update local state with the response
         const parsedState = JSON.parse(data.updateGame.gameState);
         updateGameState(parsedState);
+        debugLog(`Turn taken successfully! New counter: ${newCounter}`, 'success');
       } catch (error) {
+        debugLog(`Failed to take turn: ${error.message}`, 'error');
         alert('Failed to take turn: ' + error.message);
       }
     });
 
     // Start game UI
     function startGame() {
+      debugLog('Starting game UI...', 'info');
       updateGameState({ counter: 0, gameActive: true, currentTurn: 1 });
     }
 
     // Update game state
     function updateGameState(state) {
+      debugLog(`Updating game state: ${JSON.stringify(state)}`, 'state');
       gameState = state;
       document.getElementById('counter').textContent = state.counter;
       
@@ -611,25 +831,31 @@
       document.getElementById('currentTurn').className = `player-indicator player${state.currentTurn}`;
       
       if (!state.gameActive) {
+        debugLog(`Game Over! Winner: Player ${state.currentTurn}`, 'success');
         document.getElementById('winner').style.display = 'block';
         document.getElementById('winnerName').textContent = `Player ${state.currentTurn}`;
         document.getElementById('takeTurn').style.display = 'none';
       }
+      
+      updateStateMonitor();
     }
 
     // Copy game ID
     document.getElementById('copyGameId').addEventListener('click', () => {
       navigator.clipboard.writeText(gameId);
+      debugLog(`Game ID copied to clipboard: ${gameId}`, 'info');
       alert('Game ID copied to clipboard!');
     });
 
     // New game
     document.getElementById('newGame').addEventListener('click', () => {
+      debugLog('Starting new game - reloading page', 'info');
       location.reload();
     });
 
     // Subscribe to game updates (simplified - in production use AWS Amplayer)
     function subscribeToUpdates() {
+      debugLog('Starting subscription polling (2 second interval)', 'info');
       // Poll for updates every 2 seconds (simplified approach)
       setInterval(async () => {
         try {
@@ -646,7 +872,10 @@
           const data = await graphqlRequest(query, { gameId });
           if (data.getGame && data.getGame.gameState) {
             const parsedState = JSON.parse(data.getGame.gameState);
-            updateGameState(parsedState);
+            if (JSON.stringify(parsedState) !== JSON.stringify(gameState)) {
+              debugLog('Game state updated from poll', 'info');
+              updateGameState(parsedState);
+            }
           }
         } catch (error) {
           console.error('Failed to fetch game state:', error);
@@ -660,6 +889,8 @@
         document.querySelectorAll('.template-btn').forEach(b => b.classList.remove('selected'));
         btn.classList.add('selected');
         selectedGameType = btn.dataset.type;
+        debugLog(`Selected game type: ${selectedGameType}`, 'info');
+        updateStateMonitor();
       });
     });
     
@@ -670,9 +901,12 @@
         const feature = chip.dataset.feature;
         if (selectedFeatures.has(feature)) {
           selectedFeatures.delete(feature);
+          debugLog(`Removed feature: ${feature}`, 'info');
         } else {
           selectedFeatures.add(feature);
+          debugLog(`Added feature: ${feature}`, 'info');
         }
+        updateStateMonitor();
       });
     });
     
@@ -683,6 +917,7 @@
         return;
       }
       
+      debugLog(`Generating AI game - Type: ${selectedGameType}`, 'info');
       const requirements = document.getElementById('requirements').value;
       
       try {
@@ -711,6 +946,8 @@
           }
         };
         
+        debugLog(`Requirements: ${JSON.stringify(reqObj)}`, 'info');
+        
         const data = await graphqlRequest(mutation, {
           gameType: selectedGameType,
           requirements: JSON.stringify(reqObj)
@@ -718,11 +955,13 @@
         
         if (data.generateGame) {
           currentGeneratedGame = data.generateGame;
+          debugLog(`Game generated! ID: ${data.generateGame.gameId}, HTML Length: ${data.generateGame.gameHtml?.length}`, 'success');
           document.getElementById('generatedGameFrame').srcdoc = data.generateGame.gameHtml;
           document.getElementById('generatedPreview').classList.add('active');
           showStatus('Game generated successfully!', 'success');
         }
       } catch (error) {
+        debugLog(`Failed to generate game: ${error.message}`, 'error');
         showStatus('Failed to generate game: ' + error.message, 'error');
       } finally {
         showLoading(false);
@@ -735,6 +974,8 @@
         alert('No game to convert');
         return;
       }
+      
+      debugLog(`Converting game to multiplayer - ID: ${currentGeneratedGame.gameId}`, 'info');
       
       try {
         document.getElementById('convertGeneratedBtn').disabled = true;
@@ -756,10 +997,12 @@
         });
         
         if (data.convertToMultiplayer) {
+          debugLog(`Game converted! URL: ${data.convertToMultiplayer.gameUrl}`, 'success');
           alert(`Game converted! URL: ${data.convertToMultiplayer.gameUrl}`);
           window.open(data.convertToMultiplayer.gameUrl, '_blank');
         }
       } catch (error) {
+        debugLog(`Failed to convert game: ${error.message}`, 'error');
         alert('Failed to convert game: ' + error.message);
       } finally {
         document.getElementById('convertGeneratedBtn').disabled = false;
@@ -775,11 +1018,14 @@
         return;
       }
       
+      debugLog(`Converting pasted HTML to multiplayer - Length: ${html.length}`, 'info');
+      
       try {
         document.getElementById('convertHtmlBtn').disabled = true;
         document.getElementById('convertHtmlBtn').textContent = 'Converting...';
         
         const gameId = `game-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
+        debugLog(`Generated game ID: ${gameId}`, 'info');
         
         const mutation = `
           mutation ConvertToMultiplayer($gameId: ID!, $gameHtml: String!) {
@@ -797,12 +1043,14 @@
         });
         
         if (data.convertToMultiplayer) {
+          debugLog(`HTML converted! URL: ${data.convertToMultiplayer.gameUrl}`, 'success');
           document.getElementById('convertedGameFrame').src = data.convertToMultiplayer.gameUrl;
           document.getElementById('convertedGameUrl').href = data.convertToMultiplayer.gameUrl;
           document.getElementById('convertedGameUrl').textContent = data.convertToMultiplayer.gameUrl;
           document.getElementById('convertedPreview').classList.add('active');
         }
       } catch (error) {
+        debugLog(`Failed to convert HTML: ${error.message}`, 'error');
         alert('Failed to convert game: ' + error.message);
       } finally {
         document.getElementById('convertHtmlBtn').disabled = false;
@@ -812,6 +1060,7 @@
     
     // Helper functions for status messages
     function showStatus(message, type) {
+      debugLog(`Status: ${message} (${type})`, type);
       const statusEl = document.getElementById('statusMessage');
       statusEl.textContent = message;
       statusEl.className = `status-message ${type}`;
@@ -829,13 +1078,21 @@
     function showLoading(show) {
       const loading = document.getElementById('loadingIndicator');
       if (show) {
+        debugLog('Showing loading indicator', 'info');
         loading.classList.add('active');
         document.getElementById('generateGameBtn').disabled = true;
       } else {
+        debugLog('Hiding loading indicator', 'info');
         loading.classList.remove('active');
         document.getElementById('generateGameBtn').disabled = false;
       }
     }
+    
+    // Initialize debug log
+    debugLog('Debug mode initialized', 'success');
+    debugLog(`API Endpoint: ${API_ENDPOINT}`, 'info');
+    debugLog('Ready for testing!', 'success');
+    updateStateMonitor();
   </script>
 </body>
 </html>
