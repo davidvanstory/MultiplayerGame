@@ -59,7 +59,7 @@ export class GameStack extends cdk.Stack {
         API_KEY: '', // Will be set after API is created
         LAMBDA_ROLE_ARN: '', // Will be set after role is created
       },
-      timeout: cdk.Duration.minutes(2),
+      timeout: cdk.Duration.minutes(5),
       memorySize: 512,
     });
 

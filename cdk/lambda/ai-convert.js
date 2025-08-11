@@ -1114,33 +1114,41 @@ async function handleConvertToMultiplayer(event) {
   console.log('Game ID:', gameId);
   
   try {
-    // Step 1: Deep analysis of game structure
-    const analysis = analyzeGameStructure(gameHtml);
-    console.log('Game type detected:', analysis.gameType);
-    console.log('Complexity level:', analysis.complexity.level);
+    // Step 1: Deep analysis of game structure (for conversion strategy)
+    const structureAnalysis = analyzeGameStructure(gameHtml);
+    console.log('Game type detected:', structureAnalysis.gameType);
+    console.log('Complexity level:', structureAnalysis.complexity.level);
     
-    // Step 2: Add data attributes to enhance tracking
-    let enhancedHtml = injectDataAttributes(gameHtml, analysis);
+    // Step 2: Analyze game elements (for data attribute injection)
+    const elementAnalysis = analyzeGameElements(gameHtml);
+    console.log('Elements detected for tracking:', {
+      buttons: elementAnalysis.buttonPatterns.length,
+      states: elementAnalysis.statePatterns.length,
+      interactions: elementAnalysis.interactionPatterns.length
+    });
     
-    // Step 3: Build intelligent conversion prompt
-    const conversionPrompt = buildConversionPrompt(enhancedHtml, analysis);
+    // Step 3: Add data attributes to enhance tracking
+    let enhancedHtml = injectDataAttributes(gameHtml, elementAnalysis);
     
-    // Step 4: Convert to multiplayer using AI
+    // Step 4: Build intelligent conversion prompt (using structure analysis)
+    const conversionPrompt = buildConversionPrompt(enhancedHtml, structureAnalysis);
+    
+    // Step 5: Convert to multiplayer using AI
     console.log('Calling AI for multiplayer conversion...');
     const multiplayerHtml = await callOpenAI(conversionPrompt);
     
-    // Step 5: Generate server-side validator
+    // Step 6: Generate server-side validator (using structure analysis)
     console.log('Generating server-side validation code...');
-    const serverCode = generateServerValidator(analysis);
+    const serverCode = generateServerValidator(structureAnalysis);
     
-    // Step 6: Deploy server validation Lambda
+    // Step 7: Deploy server validation Lambda
     console.log('Deploying server validation Lambda...');
     const serverArn = await deployServerCode(gameId, serverCode);
     
-    // Step 7: Inject multiplayer library into converted HTML
+    // Step 8: Inject multiplayer library into converted HTML
     const finalHtml = injectMultiplayerLibrary(multiplayerHtml, gameId);
     
-    // Step 8: Store enhanced game to S3
+    // Step 9: Store enhanced game to S3
     const s3Key = `games/${gameId}/index.html`;
     const putCommand = new PutObjectCommand({
       Bucket: process.env.WEBSITE_BUCKET,
@@ -1148,8 +1156,8 @@ async function handleConvertToMultiplayer(event) {
       Body: finalHtml,
       ContentType: 'text/html',
       Metadata: {
-        'game-type': analysis.gameType,
-        'complexity': analysis.complexity.level,
+        'game-type': structureAnalysis.gameType,
+        'complexity': structureAnalysis.complexity.level,
         'converted-at': new Date().toISOString(),
         'has-server-validator': 'true',
         'server-arn': serverArn
@@ -1159,7 +1167,7 @@ async function handleConvertToMultiplayer(event) {
     await s3Client.send(putCommand);
     console.log('Multiplayer game uploaded to S3:', s3Key);
     
-    // Step 9: Store server validator code as backup
+    // Step 10: Store server validator code as backup
     const validatorKey = `games/${gameId}/validator.js`;
     const validatorCommand = new PutObjectCommand({
       Bucket: process.env.WEBSITE_BUCKET,
@@ -1181,8 +1189,8 @@ async function handleConvertToMultiplayer(event) {
       gameId: gameId,
       serverEndpoint: serverArn || process.env.API_ENDPOINT,
       metadata: {
-        gameType: analysis.gameType,
-        complexity: analysis.complexity.level,
+        gameType: structureAnalysis.gameType,
+        complexity: structureAnalysis.complexity.level,
         hasServerValidation: true,
         serverValidatorUrl: `https://${process.env.CF_DOMAIN}/${validatorKey}`,
         convertedAt: new Date().toISOString()
@@ -1342,22 +1350,23 @@ async function callOpenAI(prompt) {
     throw new Error('OPENAI_API_KEY is not configured');
   }
   
-  // Initialize OpenAI client
+  // Initialize OpenAI client with AppSync-compatible timeout
   const openai = new OpenAI({
     apiKey: process.env.OPENAI_API_KEY,
-    timeout: 60 * 1000, // 60 seconds
-    maxRetries: 2
+    timeout: 25 * 1000, // 25 seconds to fit within AppSync's 30-second limit
+    maxRetries: 1       // Reduced retries to avoid timeout
   });
 
   try {
-    console.log('Making OpenAI API request using SDK...');
+    console.log('Making OpenAI API request (25s timeout for AppSync)...');
+    const startTime = Date.now();
     
     const response = await openai.chat.completions.create({
       model: 'gpt-4o-mini',
       messages: [
         {
           role: 'system',
-          content: 'You are an expert game developer who creates complete, playable HTML5 games. You write clean, well-commented code that follows best practices. Always return ONLY the HTML code without any markdown formatting.'
+          content: 'You are an expert game developer who creates complete, playable HTML5 games. You write clean, well-commented code that follows best practices. Always return ONLY the HTML code without any markdown formatting. Keep the code concise.'
         },
         {
           role: 'user',
@@ -1365,8 +1374,11 @@ async function callOpenAI(prompt) {
         }
       ],
       temperature: 0.7,
-      max_tokens: 12000  // Increased for larger games
+      max_tokens: 8000  // Reduced for faster response within AppSync timeout
     });
+    
+    const elapsed = Date.now() - startTime;
+    console.log(`OpenAI API call completed in ${elapsed}ms`);
 
     if (!response.choices || !response.choices[0] || !response.choices[0].message) {
       console.error('Invalid OpenAI response structure:', response);
@@ -1387,6 +1399,13 @@ async function callOpenAI(prompt) {
     return cleanedContent.trim();
   } catch (error) {
     console.error('OpenAI API error:', error);
+    
+    // Check for timeout error
+    if (error.message?.includes('timeout') || error.code === 'ETIMEDOUT' || error.code === 'ECONNABORTED') {
+      console.error('OpenAI request timed out after 25 seconds');
+      throw new Error('OpenAI request timed out. Please try again with simpler requirements or a smaller game.');
+    }
+    
     if (error.response) {
       console.error('Error response:', error.response.data);
       throw new Error(`OpenAI API error: ${error.response.data?.error?.message || error.message}`);
