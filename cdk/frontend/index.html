@@ -1385,14 +1385,14 @@
       
       try {
         document.getElementById('convertGeneratedBtn').disabled = true;
-        document.getElementById('convertGeneratedBtn').textContent = 'Converting...';
+        document.getElementById('convertGeneratedBtn').textContent = '🔄 Starting conversion...';
         
         const mutation = `
           mutation ConvertToMultiplayer($gameId: ID!, $gameHtml: String!) {
             convertToMultiplayer(gameId: $gameId, gameHtml: $gameHtml) {
-              gameUrl
               gameId
-              serverEndpoint
+              conversionStatus
+              metadata
             }
           }
         `;
@@ -1403,14 +1403,13 @@
         });
         
         if (data.convertToMultiplayer) {
-          alert(`Game converted! URL: ${data.convertToMultiplayer.gameUrl}`);
-          window.open(data.convertToMultiplayer.gameUrl, '_blank');
+          // Start polling for conversion status
+          pollConversionStatus(data.convertToMultiplayer.gameId, 'convertGeneratedBtn');
         }
       } catch (error) {
-        alert('Failed to convert game: ' + error.message);
-      } finally {
+        alert('Failed to start conversion: ' + error.message);
         document.getElementById('convertGeneratedBtn').disabled = false;
-        document.getElementById('convertGeneratedBtn').textContent = 'Convert to Multiplayer';
+        document.getElementById('convertGeneratedBtn').textContent = '🌐 Convert to Multiplayer';
       }
     });
     
@@ -1424,16 +1423,17 @@
       
       try {
         document.getElementById('convertHtmlBtn').disabled = true;
-        document.getElementById('convertHtmlBtn').textContent = 'Converting...';
+        document.getElementById('convertHtmlBtn').textContent = '🔄 Starting conversion...';
+        showConvertStatus('Starting conversion process...', 'info');
         
         const gameId = `game-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
         
         const mutation = `
           mutation ConvertToMultiplayer($gameId: ID!, $gameHtml: String!) {
             convertToMultiplayer(gameId: $gameId, gameHtml: $gameHtml) {
-              gameUrl
               gameId
-              serverEndpoint
+              conversionStatus
+              metadata
             }
           }
         `;
@@ -1444,25 +1444,115 @@
         });
         
         if (data.convertToMultiplayer) {
-          const iframe = document.getElementById('convertedGameFrame');
-          iframe.src = data.convertToMultiplayer.gameUrl;
-          
-          // Set active frame and inject config
-          activeGameFrame = iframe;
-          injectGameConfig(iframe, gameId, 'player1');
-          
-          document.getElementById('convertedGameUrl').href = data.convertToMultiplayer.gameUrl;
-          document.getElementById('convertedGameUrl').textContent = data.convertToMultiplayer.gameUrl;
-          document.getElementById('convertedPreview').classList.add('active');
-          updateDebugStats();
+          // Start polling for conversion status
+          pollConversionStatus(gameId, 'convertHtmlBtn');
         }
       } catch (error) {
-        alert('Failed to convert game: ' + error.message);
-      } finally {
+        alert('Failed to start conversion: ' + error.message);
         document.getElementById('convertHtmlBtn').disabled = false;
         document.getElementById('convertHtmlBtn').textContent = '🎮 Convert to Multiplayer';
+        hideConvertStatus();
       }
     });
+    
+    async function pollConversionStatus(gameId, buttonId) {
+      const button = document.getElementById(buttonId);
+      const maxPolls = 60; // Poll for up to 2 minutes (60 * 2 seconds)
+      let pollCount = 0;
+      
+      const pollInterval = setInterval(async () => {
+        pollCount++;
+        
+        try {
+          const query = `
+            query GetGame($gameId: ID!) {
+              getGame(gameId: $gameId) {
+                gameId
+                conversionStatus
+                metadata
+              }
+            }
+          `;
+          
+          const data = await graphqlRequest(query, { gameId }, true); // Silent mode
+          
+          if (data.getGame) {
+            const status = data.getGame.conversionStatus;
+            const metadata = JSON.parse(data.getGame.metadata || '{}');
+            
+            // Update button text based on status
+            if (status === 'PROCESSING') {
+              button.textContent = `⚙️ Converting... (${Math.min(pollCount * 2, 120)}s)`;
+              if (buttonId === 'convertHtmlBtn') {
+                showConvertStatus('AI is converting your game to multiplayer...', 'info');
+              }
+            } else if (status === 'COMPLETE') {
+              clearInterval(pollInterval);
+              button.textContent = '✅ Conversion Complete!';
+              
+              // Handle successful conversion
+              if (metadata.gameUrl) {
+                if (buttonId === 'convertGeneratedBtn') {
+                  alert(`Game converted! URL: ${metadata.gameUrl}`);
+                  window.open(metadata.gameUrl, '_blank');
+                } else if (buttonId === 'convertHtmlBtn') {
+                  const iframe = document.getElementById('convertedGameFrame');
+                  iframe.src = metadata.gameUrl;
+                  
+                  // Set active frame and inject config
+                  activeGameFrame = iframe;
+                  injectGameConfig(iframe, gameId, 'player1');
+                  
+                  document.getElementById('convertedGameUrl').href = metadata.gameUrl;
+                  document.getElementById('convertedGameUrl').textContent = metadata.gameUrl;
+                  document.getElementById('convertedPreview').classList.add('active');
+                  showConvertStatus('Conversion completed successfully!', 'success');
+                  updateDebugStats();
+                }
+              }
+              
+              // Reset button after 3 seconds
+              setTimeout(() => {
+                button.disabled = false;
+                button.textContent = buttonId === 'convertGeneratedBtn' ?
+                  '🌐 Convert to Multiplayer' : '🎮 Convert to Multiplayer';
+              }, 3000);
+              
+            } else if (status === 'FAILED') {
+              clearInterval(pollInterval);
+              button.textContent = '❌ Conversion Failed';
+              alert(`Conversion failed: ${metadata.error || 'Unknown error'}`);
+              
+              // Reset button
+              button.disabled = false;
+              button.textContent = buttonId === 'convertGeneratedBtn' ?
+                '🌐 Convert to Multiplayer' : '🎮 Convert to Multiplayer';
+              
+              if (buttonId === 'convertHtmlBtn') {
+                showConvertStatus('Conversion failed. Please try again.', 'error');
+              }
+            }
+          }
+          
+          // Stop polling after max attempts
+          if (pollCount >= maxPolls) {
+            clearInterval(pollInterval);
+            button.textContent = '⏱️ Conversion timed out';
+            alert('Conversion is taking longer than expected. Please try again later.');
+            button.disabled = false;
+            button.textContent = buttonId === 'convertGeneratedBtn' ?
+              '🌐 Convert to Multiplayer' : '🎮 Convert to Multiplayer';
+            if (buttonId === 'convertHtmlBtn') {
+              hideConvertStatus();
+            }
+          }
+          
+        } catch (error) {
+          console.error('Polling error:', error);
+          // Continue polling unless it's a critical error
+        }
+      }, 2000); // Poll every 2 seconds
+    }
     
     // Helper functions for status messages
     function showStatus(message, type) {

@@ -58,6 +58,7 @@ export class GameStack extends cdk.Stack {
         API_ENDPOINT: '', // Will be set after API is created
         API_KEY: '', // Will be set after API is created
         LAMBDA_ROLE_ARN: '', // Will be set after role is created
+        GAME_TABLE_NAME: gameTable.tableName,
       },
       timeout: cdk.Duration.minutes(5),
       memorySize: 512,
@@ -88,6 +89,7 @@ export class GameStack extends cdk.Stack {
       ],
       resources: [
         `arn:aws:lambda:${this.region}:${this.account}:function:game-validator-*`,
+        `arn:aws:lambda:${this.region}:${this.account}:function:${this.stackName}-*`, // Allow self-invocation
       ],
     }));
 
@@ -99,6 +101,8 @@ export class GameStack extends cdk.Stack {
 
     // Grant S3 write permissions for games/* path
     websiteBucket.grantWrite(aiConvertLambda, 'games/*');
+
+    gameTable.grantReadWriteData(aiConvertLambda);
 
     // 5. AppSync API - v3.0 with flexible game state support
     const api = new appsync.GraphqlApi(this, 'GameAPI', {

@@ -1,11 +1,13 @@
 const { S3Client, PutObjectCommand } = require('@aws-sdk/client-s3');
-const { LambdaClient, CreateFunctionCommand, GetFunctionCommand } = require('@aws-sdk/client-lambda');
+const { LambdaClient, CreateFunctionCommand, GetFunctionCommand, InvokeCommand } = require('@aws-sdk/client-lambda');
+const { DynamoDBClient, PutItemCommand, UpdateItemCommand, GetItemCommand } = require('@aws-sdk/client-dynamodb');
 const OpenAI = require('openai');
 const crypto = require('crypto');
 const s3Client = new S3Client({ region: process.env.AWS_REGION || 'us-east-2' });
 const lambdaClient = new LambdaClient({ region: process.env.AWS_REGION || 'us-east-2' });
+const dynamoClient = new DynamoDBClient({ region: process.env.AWS_REGION || 'us-east-2' });
 
-exports.handler = async (event) => {
+exports.handler = async (event, context) => {
   console.log('Lambda invoked with event:', JSON.stringify(event, null, 2));
   console.log('Environment Variables Check:');
   console.log('WEBSITE_BUCKET:', process.env.WEBSITE_BUCKET);
@@ -13,15 +15,22 @@ exports.handler = async (event) => {
   console.log('API_ENDPOINT:', process.env.API_ENDPOINT);
   console.log('API_KEY:', process.env.API_KEY ? 'Set (hidden)' : 'Not set');
   console.log('OPENAI_API_KEY:', process.env.OPENAI_API_KEY ? 'Set (hidden)' : 'Not set');
+  console.log('Function Name:', context ? context.functionName : 'Not available');
   
   const operation = event.info ? event.info.fieldName : 'convertToMultiplayer';
   console.log('Operation:', operation);
+  
+  // Check if this is an async processing invocation
+  if (event.isAsyncProcessing) {
+    console.log('Processing async conversion for gameId:', event.gameId);
+    return await handleAsyncConversion(event);
+  }
   
   try {
     if (operation === 'generateGame') {
       return await handleGenerateGame(event);
     } else if (operation === 'convertToMultiplayer') {
-      return await handleConvertToMultiplayer(event);
+      return await handleConvertToMultiplayer(event, context);
     }
     
     throw new Error(`Unknown operation: ${operation}`);
@@ -1107,19 +1116,130 @@ async function deployServerCode(gameId, serverCode) {
   }
 }
 
-async function handleConvertToMultiplayer(event) {
+async function handleConvertToMultiplayer(event, context) {
   const { gameId, gameHtml } = event.arguments || event;
   
-  console.log('Converting single-player game to multiplayer with enhanced engine');
-  console.log('Game ID:', gameId);
+  console.log('Starting async conversion for game:', gameId);
   
   try {
-    // Step 1: Deep analysis of game structure (for conversion strategy)
+    // Step 1: Create initial Game record with PENDING status
+    const now = new Date().toISOString();
+    const gameRecord = {
+      gameId: gameId,
+      gameType: 'multiplayer-conversion',
+      gameHtml: gameHtml,
+      gameState: JSON.stringify({
+        initialized: false,
+        conversionInProgress: true
+      }),
+      players: JSON.stringify({}),
+      metadata: JSON.stringify({
+        originalHtmlLength: gameHtml.length,
+        conversionStartedAt: now,
+        conversionStatus: 'PENDING'
+      }),
+      serverLogicUrl: '',
+      conversionStatus: 'PENDING',
+      createdAt: now,
+      updatedAt: now
+    };
+    
+    // Store initial record in DynamoDB if we have table name
+    if (process.env.GAME_TABLE_NAME) {
+      console.log('Storing initial game record in DynamoDB');
+      const putCommand = new PutItemCommand({
+        TableName: process.env.GAME_TABLE_NAME,
+        Item: {
+          gameId: { S: gameId },
+          gameType: { S: gameRecord.gameType },
+          gameHtml: { S: gameRecord.gameHtml },
+          gameState: { S: gameRecord.gameState },
+          players: { S: gameRecord.players },
+          metadata: { S: gameRecord.metadata },
+          serverLogicUrl: { S: gameRecord.serverLogicUrl },
+          conversionStatus: { S: gameRecord.conversionStatus },
+          createdAt: { S: gameRecord.createdAt },
+          updatedAt: { S: gameRecord.updatedAt }
+        }
+      });
+      
+      await dynamoClient.send(putCommand);
+      console.log('Initial game record stored successfully');
+    }
+    
+    // Step 2: Trigger async processing via Lambda self-invocation
+    console.log('Triggering async conversion processing');
+    const asyncPayload = {
+      isAsyncProcessing: true,
+      gameId: gameId,
+      gameHtml: gameHtml,
+      tableName: process.env.GAME_TABLE_NAME
+    };
+    
+    // Use context to get the current function name
+    const functionName = context?.functionName || process.env.AWS_LAMBDA_FUNCTION_NAME;
+    
+    const invokeCommand = new InvokeCommand({
+      FunctionName: functionName,
+      InvocationType: 'Event', // Async invocation
+      Payload: JSON.stringify(asyncPayload)
+    });
+    
+    try {
+      await lambdaClient.send(invokeCommand);
+      console.log('Async processing triggered successfully');
+    } catch (invokeError) {
+      console.error('Failed to trigger async processing:', invokeError);
+      // Continue anyway - the record is created
+    }
+    
+    // Step 3: Return immediately with the Game record
+    console.log('Returning PENDING game record to client');
+    return gameRecord;
+    
+  } catch (error) {
+    console.error('Error in handleConvertToMultiplayer:', error);
+    
+    // Return error status game record
+    const errorRecord = {
+      gameId: gameId,
+      gameType: 'multiplayer-conversion',
+      gameHtml: gameHtml || '',
+      gameState: JSON.stringify({ error: error.message }),
+      players: JSON.stringify({}),
+      metadata: JSON.stringify({
+        error: error.message,
+        conversionStatus: 'FAILED'
+      }),
+      serverLogicUrl: '',
+      conversionStatus: 'FAILED',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+    
+    return errorRecord;
+  }
+}
+
+async function handleAsyncConversion(event) {
+  const { gameId, gameHtml, tableName } = event;
+  
+  console.log('Processing async conversion for game:', gameId);
+  
+  try {
+    // Update status to PROCESSING
+    if (tableName) {
+      await updateConversionStatus(tableName, gameId, 'PROCESSING', {
+        processingStartedAt: new Date().toISOString()
+      });
+    }
+    
+    // Step 1: Deep analysis of game structure
     const structureAnalysis = analyzeGameStructure(gameHtml);
     console.log('Game type detected:', structureAnalysis.gameType);
     console.log('Complexity level:', structureAnalysis.complexity.level);
     
-    // Step 2: Analyze game elements (for data attribute injection)
+    // Step 2: Analyze game elements
     const elementAnalysis = analyzeGameElements(gameHtml);
     console.log('Elements detected for tracking:', {
       buttons: elementAnalysis.buttonPatterns.length,
@@ -1127,17 +1247,17 @@ async function handleConvertToMultiplayer(event) {
       interactions: elementAnalysis.interactionPatterns.length
     });
     
-    // Step 3: Add data attributes to enhance tracking
+    // Step 3: Add data attributes
     let enhancedHtml = injectDataAttributes(gameHtml, elementAnalysis);
     
-    // Step 4: Build intelligent conversion prompt (using structure analysis)
+    // Step 4: Build conversion prompt
     const conversionPrompt = buildConversionPrompt(enhancedHtml, structureAnalysis);
     
     // Step 5: Convert to multiplayer using AI
     console.log('Calling AI for multiplayer conversion...');
     const multiplayerHtml = await callOpenAI(conversionPrompt);
     
-    // Step 6: Generate server-side validator (using structure analysis)
+    // Step 6: Generate server-side validator
     console.log('Generating server-side validation code...');
     const serverCode = generateServerValidator(structureAnalysis);
     
@@ -1145,10 +1265,10 @@ async function handleConvertToMultiplayer(event) {
     console.log('Deploying server validation Lambda...');
     const serverArn = await deployServerCode(gameId, serverCode);
     
-    // Step 8: Inject multiplayer library into converted HTML
+    // Step 8: Inject multiplayer library
     const finalHtml = injectMultiplayerLibrary(multiplayerHtml, gameId);
     
-    // Step 9: Store enhanced game to S3
+    // Step 9: Store to S3
     const s3Key = `games/${gameId}/index.html`;
     const putCommand = new PutObjectCommand({
       Bucket: process.env.WEBSITE_BUCKET,
@@ -1167,7 +1287,7 @@ async function handleConvertToMultiplayer(event) {
     await s3Client.send(putCommand);
     console.log('Multiplayer game uploaded to S3:', s3Key);
     
-    // Step 10: Store server validator code as backup
+    // Step 10: Store validator code as backup
     const validatorKey = `games/${gameId}/validator.js`;
     const validatorCommand = new PutObjectCommand({
       Bucket: process.env.WEBSITE_BUCKET,
@@ -1183,26 +1303,83 @@ async function handleConvertToMultiplayer(event) {
     await s3Client.send(validatorCommand);
     console.log('Server validator code backed up to S3:', validatorKey);
     
-    // Return comprehensive conversion result
-    const result = {
-      gameUrl: `https://${process.env.CF_DOMAIN}/${s3Key}`,
-      gameId: gameId,
-      serverEndpoint: serverArn || process.env.API_ENDPOINT,
-      metadata: {
+    // Step 11: Update final status to COMPLETE
+    const gameUrl = `https://${process.env.CF_DOMAIN}/${s3Key}`;
+    
+    if (tableName) {
+      await updateConversionStatus(tableName, gameId, 'COMPLETE', {
+        gameUrl: gameUrl,
+        serverEndpoint: serverArn,
         gameType: structureAnalysis.gameType,
         complexity: structureAnalysis.complexity.level,
-        hasServerValidation: true,
-        serverValidatorUrl: `https://${process.env.CF_DOMAIN}/${validatorKey}`,
-        convertedAt: new Date().toISOString()
-      }
+        completedAt: new Date().toISOString()
+      });
+    }
+    
+    console.log('Async conversion completed successfully');
+    return {
+      success: true,
+      gameId: gameId,
+      gameUrl: gameUrl
     };
     
-    console.log('Conversion complete:', result);
-    return result;
-    
   } catch (error) {
-    console.error('Error in multiplayer conversion:', error);
-    throw new Error(`Multiplayer conversion failed: ${error.message}`);
+    console.error('Error in async conversion:', error);
+    
+    // Update status to FAILED
+    if (tableName) {
+      await updateConversionStatus(tableName, gameId, 'FAILED', {
+        error: error.message,
+        failedAt: new Date().toISOString()
+      });
+    }
+    
+    throw error;
+  }
+}
+
+async function updateConversionStatus(tableName, gameId, status, additionalMetadata = {}) {
+  console.log(`Updating conversion status for ${gameId} to ${status}`);
+  
+  try {
+    // First get the current record to preserve existing metadata
+    const getCommand = new GetItemCommand({
+      TableName: tableName,
+      Key: {
+        gameId: { S: gameId }
+      }
+    });
+    
+    const getResult = await dynamoClient.send(getCommand);
+    const currentMetadata = getResult.Item?.metadata?.S ? JSON.parse(getResult.Item.metadata.S) : {};
+    
+    // Merge metadata
+    const updatedMetadata = {
+      ...currentMetadata,
+      ...additionalMetadata,
+      conversionStatus: status,
+      lastUpdated: new Date().toISOString()
+    };
+    
+    // Update the record
+    const updateCommand = new UpdateItemCommand({
+      TableName: tableName,
+      Key: {
+        gameId: { S: gameId }
+      },
+      UpdateExpression: 'SET conversionStatus = :status, metadata = :metadata, updatedAt = :updatedAt',
+      ExpressionAttributeValues: {
+        ':status': { S: status },
+        ':metadata': { S: JSON.stringify(updatedMetadata) },
+        ':updatedAt': { S: new Date().toISOString() }
+      }
+    });
+    
+    await dynamoClient.send(updateCommand);
+    console.log(`Status updated to ${status} for game ${gameId}`);
+  } catch (error) {
+    console.error(`Failed to update status for ${gameId}:`, error);
+    // Don't throw - this is a best-effort update
   }
 }
 
