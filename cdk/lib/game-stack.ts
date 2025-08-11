@@ -57,10 +57,45 @@ export class GameStack extends cdk.Stack {
         CF_DOMAIN: distribution.distributionDomainName,
         API_ENDPOINT: '', // Will be set after API is created
         API_KEY: '', // Will be set after API is created
+        LAMBDA_ROLE_ARN: '', // Will be set after role is created
       },
       timeout: cdk.Duration.minutes(2),
       memorySize: 512,
     });
+
+    // Create an execution role for the validator Lambdas
+    const validatorExecutionRole = new iam.Role(this, 'ValidatorLambdaExecutionRole', {
+      assumedBy: new iam.ServicePrincipal('lambda.amazonaws.com'),
+      managedPolicies: [
+        iam.ManagedPolicy.fromAwsManagedPolicyName('service-role/AWSLambdaBasicExecutionRole'),
+      ],
+      description: 'Execution role for game validator Lambda functions',
+    });
+
+    // Add the validator role ARN to the AI Convert Lambda environment
+    aiConvertLambda.addEnvironment('LAMBDA_ROLE_ARN', validatorExecutionRole.roleArn);
+
+    // Grant the AI Convert Lambda permissions to create and manage Lambda functions
+    aiConvertLambda.addToRolePolicy(new iam.PolicyStatement({
+      actions: [
+        'lambda:CreateFunction',
+        'lambda:GetFunction',
+        'lambda:UpdateFunctionCode',
+        'lambda:UpdateFunctionConfiguration',
+        'lambda:TagResource',
+        'lambda:ListTags',
+        'lambda:InvokeFunction',
+      ],
+      resources: [
+        `arn:aws:lambda:${this.region}:${this.account}:function:game-validator-*`,
+      ],
+    }));
+
+    // Grant the AI Convert Lambda permission to pass the validator execution role
+    aiConvertLambda.addToRolePolicy(new iam.PolicyStatement({
+      actions: ['iam:PassRole'],
+      resources: [validatorExecutionRole.roleArn],
+    }));
 
     // Grant S3 write permissions for games/* path
     websiteBucket.grantWrite(aiConvertLambda, 'games/*');
