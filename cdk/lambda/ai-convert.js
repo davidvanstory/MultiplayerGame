@@ -1255,7 +1255,7 @@ async function handleAsyncConversion(event) {
     
     // Step 5: Convert to multiplayer using AI
     console.log('Calling AI for multiplayer conversion...');
-    const multiplayerHtml = await callOpenAI(conversionPrompt);
+    const multiplayerHtml = await callOpenAI(conversionPrompt, true); // Pass true for async mode
     
     // Step 6: Generate server-side validator
     console.log('Generating server-side validation code...');
@@ -1522,20 +1522,23 @@ exports.buildConversionPrompt = buildConversionPrompt;
 exports.injectMultiplayerLibrary = injectMultiplayerLibrary;
 exports.deployServerCode = deployServerCode;
 
-async function callOpenAI(prompt) {
+async function callOpenAI(prompt, isAsync = false) {
   if (!process.env.OPENAI_API_KEY) {
     throw new Error('OPENAI_API_KEY is not configured');
   }
   
-  // Initialize OpenAI client with AppSync-compatible timeout
+  // Use longer timeout for async processing, shorter for synchronous
+  const timeoutSeconds = isAsync ? 120 : 25; // 2 minutes for async, 25s for sync
+  
+  // Initialize OpenAI client with appropriate timeout
   const openai = new OpenAI({
     apiKey: process.env.OPENAI_API_KEY,
-    timeout: 25 * 1000, // 25 seconds to fit within AppSync's 30-second limit
-    maxRetries: 1       // Reduced retries to avoid timeout
+    timeout: timeoutSeconds * 1000,
+    maxRetries: isAsync ? 2 : 1  // More retries for async mode
   });
 
   try {
-    console.log('Making OpenAI API request (25s timeout for AppSync)...');
+    console.log(`Making OpenAI API request (${timeoutSeconds}s timeout${isAsync ? ' in async mode' : ' for AppSync'})...`);
     const startTime = Date.now();
     
     const response = await openai.chat.completions.create({
@@ -1551,7 +1554,7 @@ async function callOpenAI(prompt) {
         }
       ],
       temperature: 0.7,
-      max_tokens: 8000  // Reduced for faster response within AppSync timeout
+      max_tokens: isAsync ? 12000 : 8000  // More tokens for async mode
     });
     
     const elapsed = Date.now() - startTime;

@@ -1478,7 +1478,10 @@
           
           if (data.getGame) {
             const status = data.getGame.conversionStatus;
-            const metadata = JSON.parse(data.getGame.metadata || '{}');
+            const metadata = data.getGame.metadata ? 
+              (typeof data.getGame.metadata === 'string' ? 
+                JSON.parse(data.getGame.metadata) : 
+                data.getGame.metadata) : {};
             
             // Update button text based on status
             if (status === 'PROCESSING') {
@@ -1490,21 +1493,27 @@
               clearInterval(pollInterval);
               button.textContent = '✅ Conversion Complete!';
               
+              // Log for debugging
+              console.log('Conversion complete. Metadata:', metadata);
+              
+              // Fallback: construct gameUrl if not in metadata
+              const gameUrl = metadata.gameUrl || `https://d17uiucy3a9bfl.cloudfront.net/games/${gameId}/index.html`;
+              
               // Handle successful conversion
-              if (metadata.gameUrl) {
+              if (gameUrl) {
                 if (buttonId === 'convertGeneratedBtn') {
-                  alert(`Game converted! URL: ${metadata.gameUrl}`);
-                  window.open(metadata.gameUrl, '_blank');
+                  alert(`Game converted! URL: ${gameUrl}`);
+                  window.open(gameUrl, '_blank');
                 } else if (buttonId === 'convertHtmlBtn') {
                   const iframe = document.getElementById('convertedGameFrame');
-                  iframe.src = metadata.gameUrl;
+                  iframe.src = gameUrl;
                   
                   // Set active frame and inject config
                   activeGameFrame = iframe;
                   injectGameConfig(iframe, gameId, 'player1');
                   
-                  document.getElementById('convertedGameUrl').href = metadata.gameUrl;
-                  document.getElementById('convertedGameUrl').textContent = metadata.gameUrl;
+                  document.getElementById('convertedGameUrl').href = gameUrl;
+                  document.getElementById('convertedGameUrl').textContent = gameUrl;
                   document.getElementById('convertedPreview').classList.add('active');
                   showConvertStatus('Conversion completed successfully!', 'success');
                   updateDebugStats();

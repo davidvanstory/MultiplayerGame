@@ -11,7 +11,7 @@
     "cdk": "cdk",
     "dev": "node dev-server.js",
     "deploy": "npm run build && cdk deploy --require-approval never",
-    "upload": "aws s3 sync ./frontend s3://multiplayergamestack-gamewebsitebucket2c6eecab-065imhplkkku --delete && aws cloudfront create-invalidation --distribution-id E169RHOJSVF6H7 --paths '/*'",
+    "upload": "aws s3 cp ./frontend/index.html s3://multiplayergamestack-gamewebsitebucket2c6eecab-065imhplkkku/index.html && aws cloudfront create-invalidation --distribution-id E169RHOJSVF6H7 --paths '/*'",
     "logs": "aws logs tail /aws/lambda/MultiplayerGameStack-AIConvertFunction --follow"
   },
   "devDependencies": {
