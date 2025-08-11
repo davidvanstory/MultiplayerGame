@@ -1,0 +1,674 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GameEventBridge Test Suite</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      padding: 20px;
+    }
+    
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+    }
+    
+    .panel {
+      background: white;
+      border-radius: 10px;
+      padding: 20px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+    }
+    
+    h1 {
+      color: white;
+      text-align: center;
+      margin-bottom: 20px;
+      text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
+    }
+    
+    h2 {
+      color: #667eea;
+      margin-bottom: 15px;
+      border-bottom: 2px solid #667eea;
+      padding-bottom: 5px;
+    }
+    
+    h3 {
+      color: #764ba2;
+      margin: 15px 0 10px;
+      font-size: 16px;
+    }
+    
+    /* Game Area Styles */
+    .game-board {
+      display: grid;
+      grid-template-columns: repeat(3, 100px);
+      grid-template-rows: repeat(3, 100px);
+      gap: 10px;
+      margin: 20px 0;
+      justify-content: center;
+    }
+    
+    .game-cell {
+      background: #f0f0f0;
+      border: 2px solid #ddd;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 24px;
+      font-weight: bold;
+      cursor: pointer;
+      transition: all 0.3s;
+    }
+    
+    .game-cell:hover {
+      background: #e8eaf6;
+      border-color: #667eea;
+      transform: scale(1.05);
+    }
+    
+    .game-cell.active {
+      background: #667eea;
+      color: white;
+      border-color: #764ba2;
+    }
+    
+    .game-stats {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+      margin: 20px 0;
+    }
+    
+    .stat-box {
+      background: #f5f5f5;
+      padding: 10px;
+      border-radius: 5px;
+      text-align: center;
+    }
+    
+    .stat-label {
+      font-size: 12px;
+      color: #666;
+      margin-bottom: 5px;
+    }
+    
+    .stat-value {
+      font-size: 24px;
+      font-weight: bold;
+      color: #333;
+    }
+    
+    /* Control Buttons */
+    .controls {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 10px;
+      margin: 20px 0;
+    }
+    
+    button {
+      padding: 10px 15px;
+      background: #667eea;
+      color: white;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: bold;
+      transition: all 0.3s;
+    }
+    
+    button:hover {
+      background: #764ba2;
+      transform: translateY(-2px);
+      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+    }
+    
+    button:active {
+      transform: translateY(0);
+    }
+    
+    button.danger {
+      background: #e74c3c;
+    }
+    
+    button.danger:hover {
+      background: #c0392b;
+    }
+    
+    button.success {
+      background: #27ae60;
+    }
+    
+    button.success:hover {
+      background: #229954;
+    }
+    
+    /* Event Console */
+    .event-console {
+      background: #1e1e1e;
+      color: #f0f0f0;
+      padding: 15px;
+      border-radius: 5px;
+      font-family: 'Courier New', monospace;
+      font-size: 12px;
+      height: 400px;
+      overflow-y: auto;
+      margin-top: 10px;
+    }
+    
+    .event-entry {
+      margin-bottom: 10px;
+      padding: 8px;
+      background: rgba(255, 255, 255, 0.05);
+      border-left: 3px solid;
+      border-radius: 3px;
+    }
+    
+    .event-entry.TRANSITION {
+      border-color: #3498db;
+    }
+    
+    .event-entry.INTERACTION {
+      border-color: #27ae60;
+    }
+    
+    .event-entry.UPDATE {
+      border-color: #f39c12;
+    }
+    
+    .event-entry.ERROR {
+      border-color: #e74c3c;
+    }
+    
+    .event-type {
+      font-weight: bold;
+      margin-right: 10px;
+    }
+    
+    .event-time {
+      color: #888;
+      font-size: 10px;
+    }
+    
+    .event-data {
+      margin-top: 5px;
+      color: #aaa;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+    
+    /* Input Fields */
+    .input-group {
+      margin: 15px 0;
+    }
+    
+    .input-group label {
+      display: block;
+      margin-bottom: 5px;
+      color: #333;
+      font-weight: 600;
+    }
+    
+    .input-group input,
+    .input-group select {
+      width: 100%;
+      padding: 8px;
+      border: 2px solid #ddd;
+      border-radius: 5px;
+      font-size: 14px;
+    }
+    
+    .input-group input:focus,
+    .input-group select:focus {
+      outline: none;
+      border-color: #667eea;
+    }
+    
+    /* Touch Area */
+    .touch-area {
+      background: linear-gradient(45deg, #667eea, #764ba2);
+      height: 150px;
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-size: 18px;
+      margin: 20px 0;
+      cursor: pointer;
+      user-select: none;
+    }
+    
+    /* Status Indicator */
+    .status-indicator {
+      display: inline-block;
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      margin-right: 5px;
+      animation: pulse 2s infinite;
+    }
+    
+    .status-indicator.connected {
+      background: #27ae60;
+    }
+    
+    .status-indicator.disconnected {
+      background: #e74c3c;
+    }
+    
+    @keyframes pulse {
+      0% { opacity: 1; }
+      50% { opacity: 0.5; }
+      100% { opacity: 1; }
+    }
+    
+    /* Clear Button */
+    .clear-console {
+      float: right;
+      padding: 5px 10px;
+      font-size: 12px;
+      background: #e74c3c;
+      margin-bottom: 10px;
+    }
+    
+    /* Mobile Responsive */
+    @media (max-width: 768px) {
+      .container {
+        grid-template-columns: 1fr;
+      }
+      
+      .game-board {
+        grid-template-columns: repeat(3, 80px);
+        grid-template-rows: repeat(3, 80px);
+      }
+    }
+  </style>
+</head>
+<body>
+  <h1>🎮 GameEventBridge Test Suite</h1>
+  
+  <div class="container">
+    <!-- Game Panel -->
+    <div class="panel">
+      <h2>Test Game Area</h2>
+      
+      <h3>Game Stats</h3>
+      <div class="game-stats">
+        <div class="stat-box">
+          <div class="stat-label">Score</div>
+          <div class="stat-value" data-game-state="score" data-game-player="1">0</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-label">Level</div>
+          <div class="stat-value" data-game-state="level">1</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-label">Turn</div>
+          <div class="stat-value" data-game-state="turn" data-game-current="player1">P1</div>
+        </div>
+      </div>
+      
+      <h3>Game Board (Click cells)</h3>
+      <div class="game-board">
+        <div class="game-cell" data-game-action="cell" data-game-position="0,0"></div>
+        <div class="game-cell" data-game-action="cell" data-game-position="0,1"></div>
+        <div class="game-cell" data-game-action="cell" data-game-position="0,2"></div>
+        <div class="game-cell" data-game-action="cell" data-game-position="1,0"></div>
+        <div class="game-cell" data-game-action="cell" data-game-position="1,1"></div>
+        <div class="game-cell" data-game-action="cell" data-game-position="1,2"></div>
+        <div class="game-cell" data-game-action="cell" data-game-position="2,0"></div>
+        <div class="game-cell" data-game-action="cell" data-game-position="2,1"></div>
+        <div class="game-cell" data-game-action="cell" data-game-position="2,2"></div>
+      </div>
+      
+      <h3>Game Controls</h3>
+      <div class="controls">
+        <button data-game-action="start" onclick="startGame()">Start Game</button>
+        <button data-game-action="pause" onclick="pauseGame()">Pause Game</button>
+        <button data-game-action="reset" class="danger" onclick="resetGame()">Reset Game</button>
+        <button data-game-action="nextLevel" class="success" onclick="nextLevel()">Next Level</button>
+      </div>
+      
+      <h3>Manual Event Emission</h3>
+      <div class="input-group">
+        <label>Event Type</label>
+        <select id="eventType">
+          <option value="TRANSITION">TRANSITION</option>
+          <option value="INTERACTION">INTERACTION</option>
+          <option value="UPDATE">UPDATE</option>
+          <option value="ERROR">ERROR</option>
+        </select>
+      </div>
+      
+      <div class="input-group">
+        <label>Event Data (JSON)</label>
+        <input type="text" id="eventData" placeholder='{"action": "custom", "value": 123}' value='{"action": "custom", "value": 123}'>
+      </div>
+      
+      <button onclick="emitCustomEvent()">Emit Custom Event</button>
+      
+      <h3>Touch/Swipe Test Area</h3>
+      <div class="touch-area" data-game-touch="swipe-area">
+        Touch or Click & Drag Here
+      </div>
+      
+      <h3>Form Test</h3>
+      <form data-game-form="test-form">
+        <div class="input-group">
+          <label>Player Name</label>
+          <input type="text" name="playerName" data-game-input="name" placeholder="Enter player name">
+        </div>
+        <button type="submit">Submit Form</button>
+      </form>
+      
+      <h3>Keyboard Test</h3>
+      <div class="input-group">
+        <label>Press Arrow Keys or WASD</label>
+        <input type="text" data-game-input="keyboard" placeholder="Focus here and press keys" data-game-context="keyboard-test">
+      </div>
+    </div>
+    
+    <!-- Event Console Panel -->
+    <div class="panel">
+      <h2>
+        <span class="status-indicator connected"></span>
+        Event Console
+      </h2>
+      <button class="clear-console" onclick="clearConsole()">Clear</button>
+      <div style="clear: both;"></div>
+      
+      <div id="eventConsole" class="event-console">
+        <div class="event-entry TRANSITION">
+          <span class="event-type">TRANSITION</span>
+          <span class="event-time">Waiting for events...</span>
+          <div class="event-data">The GameEventBridge will auto-initialize when the page loads.</div>
+        </div>
+      </div>
+      
+      <h3>Bridge Status</h3>
+      <div id="bridgeStatus">
+        <p><strong>Game ID:</strong> <span id="gameIdDisplay">test-game-001</span></p>
+        <p><strong>Player ID:</strong> <span id="playerIdDisplay">test-player-001</span></p>
+        <p><strong>Session ID:</strong> <span id="sessionIdDisplay">-</span></p>
+        <p><strong>Events Captured:</strong> <span id="eventCount">0</span></p>
+        <p><strong>Debug Mode:</strong> <span id="debugStatus">Enabled</span></p>
+      </div>
+    </div>
+  </div>
+  
+  <!-- Include the multiplayer library -->
+  <script src="multiplayer-lib.js"></script>
+  
+  <script>
+    // Enable debug mode
+    window.DEBUG_MULTIPLAYER = true;
+    
+    // Configure the game
+    window.GAME_CONFIG = {
+      gameId: 'test-game-001',
+      playerId: 'test-player-001',
+      batchEvents: false, // Send immediately for testing
+      autoIntercept: true
+    };
+    
+    // Wait for library to load
+    let eventCount = 0;
+    let gameStarted = false;
+    let currentScore = 0;
+    let currentLevel = 1;
+    let currentTurn = 'P1';
+    
+    // Initialize after DOM is ready
+    document.addEventListener('DOMContentLoaded', function() {
+      console.log('DOM loaded, initializing GameEventBridge...');
+      
+      // If auto-initialization didn't work, do it manually
+      if (!window.gameEvents && window.GameEventBridge) {
+        window.gameEvents = new GameEventBridge(window.GAME_CONFIG);
+      }
+      
+      // Set up event listeners
+      if (window.gameEvents) {
+        setupEventListeners();
+        updateBridgeStatus();
+      } else {
+        console.error('GameEventBridge failed to initialize');
+        addEventToConsole('ERROR', { message: 'GameEventBridge failed to initialize' });
+      }
+      
+      // Set up game cell click handlers
+      document.querySelectorAll('.game-cell').forEach(cell => {
+        cell.addEventListener('click', function(e) {
+          // The library will auto-capture this due to data-game-action
+          // But we'll also add visual feedback
+          this.classList.toggle('active');
+          this.textContent = this.textContent === 'X' ? 'O' :
+                            this.textContent === 'O' ? '' : 'X';
+          
+          // Update score
+          if (this.textContent) {
+            updateScore(10);
+          }
+        });
+      });
+    });
+    
+    function setupEventListeners() {
+      // Listen for all events
+      window.gameEvents.on('*', function(event) {
+        console.log('Event captured:', event);
+        addEventToConsole(event.type, event.data || event);
+        eventCount++;
+        document.getElementById('eventCount').textContent = eventCount;
+      });
+      
+      // Specific listeners for each type
+      window.gameEvents.on('TRANSITION', function(event) {
+        console.log('Transition event:', event);
+      });
+      
+      window.gameEvents.on('INTERACTION', function(event) {
+        console.log('Interaction event:', event);
+      });
+      
+      window.gameEvents.on('UPDATE', function(event) {
+        console.log('Update event:', event);
+      });
+      
+      window.gameEvents.on('ERROR', function(event) {
+        console.log('Error event:', event);
+      });
+    }
+    
+    function updateBridgeStatus() {
+      if (window.gameEvents) {
+        document.getElementById('gameIdDisplay').textContent = window.gameEvents.gameId;
+        document.getElementById('playerIdDisplay').textContent = window.gameEvents.playerId;
+        document.getElementById('sessionIdDisplay').textContent = window.gameEvents.sessionId;
+      }
+    }
+    
+    function addEventToConsole(type, data) {
+      const console = document.getElementById('eventConsole');
+      const entry = document.createElement('div');
+      entry.className = `event-entry ${type}`;
+      
+      const now = new Date();
+      const timeStr = now.toLocaleTimeString() + '.' + now.getMilliseconds();
+      
+      entry.innerHTML = `
+        <span class="event-type">${type}</span>
+        <span class="event-time">${timeStr}</span>
+        <div class="event-data">${JSON.stringify(data, null, 2)}</div>
+      `;
+      
+      // Add to top of console
+      console.insertBefore(entry, console.firstChild);
+      
+      // Keep only last 50 events
+      while (console.children.length > 50) {
+        console.removeChild(console.lastChild);
+      }
+    }
+    
+    function clearConsole() {
+      const console = document.getElementById('eventConsole');
+      console.innerHTML = '<div class="event-entry">Console cleared</div>';
+      eventCount = 0;
+      document.getElementById('eventCount').textContent = '0';
+    }
+    
+    // Game functions
+    function startGame() {
+      if (!gameStarted) {
+        gameStarted = true;
+        if (window.gameEvents) {
+          window.gameEvents.emit('TRANSITION', {
+            state: 'game_started',
+            level: currentLevel,
+            player: window.gameEvents.playerId
+          });
+        }
+      }
+    }
+    
+    function pauseGame() {
+      if (gameStarted) {
+        if (window.gameEvents) {
+          window.gameEvents.emit('TRANSITION', {
+            state: 'game_paused',
+            level: currentLevel
+          });
+        }
+      }
+    }
+    
+    function resetGame() {
+      gameStarted = false;
+      currentScore = 0;
+      currentLevel = 1;
+      
+      // Reset UI
+      document.querySelectorAll('.game-cell').forEach(cell => {
+        cell.textContent = '';
+        cell.classList.remove('active');
+      });
+      
+      document.querySelector('[data-game-state="score"]').textContent = '0';
+      document.querySelector('[data-game-state="level"]').textContent = '1';
+      
+      if (window.gameEvents) {
+        window.gameEvents.emit('TRANSITION', {
+          state: 'game_reset',
+          message: 'Game has been reset'
+        });
+      }
+    }
+    
+    function nextLevel() {
+      currentLevel++;
+      document.querySelector('[data-game-state="level"]').textContent = currentLevel;
+      
+      if (window.gameEvents) {
+        window.gameEvents.emit('TRANSITION', {
+          state: 'level_complete',
+          oldLevel: currentLevel - 1,
+          newLevel: currentLevel
+        });
+      }
+    }
+    
+    function updateScore(points) {
+      currentScore += points;
+      document.querySelector('[data-game-state="score"]').textContent = currentScore;
+      
+      // The library will auto-detect this change via MutationObserver
+      // But we can also emit manually
+      if (window.gameEvents) {
+        window.gameEvents.emit('UPDATE', {
+          element: 'score',
+          oldValue: currentScore - points,
+          newValue: currentScore,
+          points: points
+        });
+      }
+    }
+    
+    function emitCustomEvent() {
+      const type = document.getElementById('eventType').value;
+      const dataStr = document.getElementById('eventData').value;
+      
+      try {
+        const data = JSON.parse(dataStr);
+        if (window.gameEvents) {
+          window.gameEvents.emit(type, data);
+        }
+      } catch (e) {
+        alert('Invalid JSON data: ' + e.message);
+        if (window.gameEvents) {
+          window.gameEvents.emit('ERROR', {
+            message: 'Failed to parse custom event data',
+            error: e.message
+          });
+        }
+      }
+    }
+    
+    // Test error emission
+    setTimeout(() => {
+      if (window.gameEvents) {
+        window.gameEvents.emit('ERROR', {
+          message: 'Test error event',
+          code: 'TEST_ERROR',
+          severity: 'low'
+        });
+      }
+    }, 3000);
+    
+    // Simulate state changes
+    setInterval(() => {
+      // Toggle turn between P1 and P2
+      const turnElement = document.querySelector('[data-game-state="turn"]');
+      if (turnElement) {
+        currentTurn = currentTurn === 'P1' ? 'P2' : 'P1';
+        turnElement.textContent = currentTurn;
+        turnElement.dataset.gameCurrent = currentTurn === 'P1' ? 'player1' : 'player2';
+      }
+    }, 5000);
+    
+    // Listen for messages from parent (if in iframe)
+    window.addEventListener('message', (e) => {
+      if (e.data && e.data.target === 'GameEventBridge') {
+        console.log('Received message from parent:', e.data);
+        addEventToConsole('PARENT_MESSAGE', e.data);
+      }
+    });
+    
+    // Test batch processing toggle
+    function toggleBatching() {
+      if (window.gameEvents) {
+        window.gameEvents.batchEvents = !window.gameEvents.batchEvents;
+        console.log('Batch processing:', window.gameEvents.batchEvents ? 'Enabled' : 'Disabled');
+      }
+    }
+  </script>
+</body>
+</html>

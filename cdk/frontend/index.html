@@ -11,6 +11,140 @@
       max-width: 600px;
       margin: 0 auto;
     }
+    /* Debug Console Styles */
+    .debug-console-toggle {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      background: #667eea;
+      color: white;
+      padding: 10px 15px;
+      border-radius: 25px;
+      cursor: pointer;
+      z-index: 1000;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+      font-size: 14px;
+      font-weight: bold;
+    }
+    .debug-console-toggle:hover {
+      background: #764ba2;
+    }
+    .debug-console-toggle .badge {
+      background: #e74c3c;
+      color: white;
+      border-radius: 10px;
+      padding: 2px 6px;
+      margin-left: 5px;
+      font-size: 12px;
+    }
+    .debug-console {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      height: 300px;
+      background: #1e1e1e;
+      color: #f0f0f0;
+      transform: translateY(100%);
+      transition: transform 0.3s ease;
+      z-index: 999;
+      display: flex;
+      flex-direction: column;
+    }
+    .debug-console.open {
+      transform: translateY(0);
+    }
+    .debug-console-header {
+      background: #2d2d2d;
+      padding: 10px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid #444;
+    }
+    .debug-console-title {
+      font-weight: bold;
+      font-size: 14px;
+    }
+    .debug-console-actions {
+      display: flex;
+      gap: 10px;
+    }
+    .debug-console-btn {
+      background: #444;
+      color: white;
+      border: none;
+      padding: 5px 10px;
+      border-radius: 3px;
+      cursor: pointer;
+      font-size: 12px;
+    }
+    .debug-console-btn:hover {
+      background: #555;
+    }
+    .debug-console-content {
+      flex: 1;
+      overflow-y: auto;
+      padding: 10px;
+      font-family: 'Courier New', monospace;
+      font-size: 12px;
+    }
+    .debug-event {
+      margin-bottom: 10px;
+      padding: 8px;
+      background: rgba(255, 255, 255, 0.05);
+      border-left: 3px solid;
+      border-radius: 3px;
+    }
+    .debug-event.TRANSITION {
+      border-color: #3498db;
+    }
+    .debug-event.INTERACTION {
+      border-color: #27ae60;
+    }
+    .debug-event.UPDATE {
+      border-color: #f39c12;
+    }
+    .debug-event.ERROR {
+      border-color: #e74c3c;
+    }
+    .debug-event-header {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 5px;
+    }
+    .debug-event-type {
+      font-weight: bold;
+      color: #fff;
+    }
+    .debug-event-time {
+      color: #888;
+      font-size: 10px;
+    }
+    .debug-event-data {
+      color: #aaa;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+    .debug-stats {
+      background: #2d2d2d;
+      padding: 10px;
+      border-top: 1px solid #444;
+      font-size: 12px;
+      display: flex;
+      gap: 20px;
+    }
+    .debug-stat {
+      display: flex;
+      gap: 5px;
+    }
+    .debug-stat-label {
+      color: #888;
+    }
+    .debug-stat-value {
+      color: #fff;
+      font-weight: bold;
+    }
     .game-container {
       border: 2px solid #333;
       border-radius: 10px;
@@ -232,6 +366,46 @@
 <body>
   <h1>🎮 Multiplayer Game Platform - AI Powered</h1>
   
+  <!-- Debug Console -->
+  <div class="debug-console-toggle" onclick="toggleDebugConsole()">
+    <span>🐛 Debug Console</span>
+    <span class="badge" id="debugEventCount" style="display: none;">0</span>
+  </div>
+  
+  <div class="debug-console" id="debugConsole">
+    <div class="debug-console-header">
+      <div class="debug-console-title">Event Debug Console</div>
+      <div class="debug-console-actions">
+        <button class="debug-console-btn" onclick="clearDebugConsole()">Clear</button>
+        <button class="debug-console-btn" onclick="exportDebugEvents()">Export</button>
+        <button class="debug-console-btn" onclick="toggleDebugConsole()">Close</button>
+      </div>
+    </div>
+    <div class="debug-console-content" id="debugConsoleContent">
+      <div style="color: #888; text-align: center; padding: 20px;">
+        Waiting for game events...
+      </div>
+    </div>
+    <div class="debug-stats">
+      <div class="debug-stat">
+        <span class="debug-stat-label">Total Events:</span>
+        <span class="debug-stat-value" id="debugTotalEvents">0</span>
+      </div>
+      <div class="debug-stat">
+        <span class="debug-stat-label">Batch Size:</span>
+        <span class="debug-stat-value" id="debugBatchSize">0</span>
+      </div>
+      <div class="debug-stat">
+        <span class="debug-stat-label">Session ID:</span>
+        <span class="debug-stat-value" id="debugSessionId">-</span>
+      </div>
+      <div class="debug-stat">
+        <span class="debug-stat-label">Active Game:</span>
+        <span class="debug-stat-value" id="debugActiveGame">none</span>
+      </div>
+    </div>
+  </div>
+
   <div class="tab-container">
     <button class="tab active" onclick="switchTab('play')">Play/Join Game</button>
     <button class="tab" onclick="switchTab('create')">Create with AI</button>
@@ -400,6 +574,268 @@
     let currentGeneratedGame = null;
     let selectedGameType = null;
     let selectedFeatures = new Set();
+
+    // Event System Variables
+    let eventQueue = [];
+    let debugEvents = [];
+    let totalEventCount = 0;
+    let sessionId = generateSessionId();
+    let batchTimer = null;
+    let activeGameFrame = null;
+    const BATCH_INTERVAL = 2000; // Send events every 2 seconds
+    const MAX_BATCH_SIZE = 50;
+    const MAX_DEBUG_EVENTS = 100;
+    
+    // Initialize event system
+    initializeEventSystem();
+    
+    function initializeEventSystem() {
+      // Set up message listener for iframe events
+      window.addEventListener('message', handleIframeMessage);
+      
+      // Start batch processing timer
+      startBatchProcessing();
+      
+      // Update debug session ID display
+      document.getElementById('debugSessionId').textContent = sessionId.substring(0, 8) + '...';
+      
+      console.log('Event system initialized with session:', sessionId);
+    }
+    
+    function handleIframeMessage(event) {
+      // Verify the message is from GameEventBridge
+      if (!event.data || event.data.source !== 'GameEventBridge') {
+        return;
+      }
+      
+      console.log('Received GameEventBridge message:', event.data);
+      
+      // Process incoming events
+      const { gameId, playerId, events } = event.data;
+      
+      if (events && Array.isArray(events)) {
+        events.forEach(evt => {
+          processGameEvent(evt, gameId, playerId);
+        });
+      }
+    }
+    
+    function processGameEvent(event, gameId, playerId) {
+      // Add metadata
+      const enrichedEvent = {
+        ...event,
+        metadata: {
+          ...event.metadata,
+          sessionId: sessionId,
+          gameId: gameId || event.metadata?.gameId,
+          playerId: playerId || event.metadata?.playerId,
+          receivedAt: Date.now()
+        }
+      };
+      
+      // Add to event queue for backend
+      eventQueue.push(enrichedEvent);
+      
+      // Add to debug console
+      addDebugEvent(enrichedEvent);
+      
+      // Update counters
+      totalEventCount++;
+      updateDebugStats();
+      
+      // Handle specific event types
+      switch (event.type) {
+        case 'TRANSITION':
+          console.log('Game transition:', event.data);
+          break;
+        case 'INTERACTION':
+          console.log('Player interaction:', event.data);
+          break;
+        case 'UPDATE':
+          console.log('State update:', event.data);
+          break;
+        case 'ERROR':
+          console.error('Game error:', event.data);
+          break;
+      }
+    }
+    
+    function startBatchProcessing() {
+      if (batchTimer) {
+        clearInterval(batchTimer);
+      }
+      
+      batchTimer = setInterval(() => {
+        flushEventBatch();
+      }, BATCH_INTERVAL);
+    }
+    
+    async function flushEventBatch() {
+      if (eventQueue.length === 0) return;
+      
+      // Take up to MAX_BATCH_SIZE events
+      const batch = eventQueue.splice(0, MAX_BATCH_SIZE);
+      
+      console.log(`Sending batch of ${batch.length} events to backend`);
+      
+      try {
+        // Send to backend (implement based on your backend API)
+        await sendEventsToBackend(batch);
+      } catch (error) {
+        console.error('Failed to send event batch:', error);
+        // Re-add failed events to queue
+        eventQueue.unshift(...batch);
+      }
+    }
+    
+    async function sendEventsToBackend(events) {
+      // This would be implemented based on your backend API
+      // For now, just log the events
+      console.log('Would send to backend:', {
+        sessionId: sessionId,
+        events: events,
+        timestamp: Date.now()
+      });
+      
+      // TODO: Implement actual backend call
+      // const mutation = `
+      //   mutation SendGameEvents($input: GameEventsInput!) {
+      //     sendGameEvents(input: $input) {
+      //       success
+      //     }
+      //   }
+      // `;
+      //
+      // await graphqlRequest(mutation, {
+      //   input: {
+      //     sessionId: sessionId,
+      //     events: JSON.stringify(events)
+      //   }
+      // });
+    }
+    
+    function injectGameConfig(iframe, gameId, playerId) {
+      // Wait for iframe to load
+      iframe.addEventListener('load', () => {
+        console.log('Injecting GAME_CONFIG into iframe');
+        
+        // Inject configuration script
+        const config = {
+          gameId: gameId,
+          playerId: playerId || `player-${Math.random().toString(36).substring(2, 11)}`,
+          sessionId: sessionId,
+          batchEvents: true,
+          batchInterval: 100,
+          autoIntercept: true
+        };
+        
+        // Try to inject the config
+        try {
+          iframe.contentWindow.GAME_CONFIG = config;
+          iframe.contentWindow.DEBUG_MULTIPLAYER = true; // Enable debug mode
+          
+          // Also inject the multiplayer library if not present
+          if (!iframe.contentDocument.querySelector('script[src*="multiplayer-lib.js"]')) {
+            const script = iframe.contentDocument.createElement('script');
+            script.src = 'multiplayer-lib.js';
+            iframe.contentDocument.head.appendChild(script);
+          }
+          
+          console.log('GAME_CONFIG injected successfully');
+        } catch (error) {
+          console.error('Failed to inject GAME_CONFIG:', error);
+        }
+      });
+    }
+    
+    function generateSessionId() {
+      return `session-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
+    }
+    
+    // Debug Console Functions
+    function toggleDebugConsole() {
+      const console = document.getElementById('debugConsole');
+      console.classList.toggle('open');
+    }
+    
+    function clearDebugConsole() {
+      debugEvents = [];
+      document.getElementById('debugConsoleContent').innerHTML = `
+        <div style="color: #888; text-align: center; padding: 20px;">
+          Console cleared. Waiting for game events...
+        </div>
+      `;
+      updateDebugStats();
+    }
+    
+    function addDebugEvent(event) {
+      debugEvents.unshift(event);
+      
+      // Keep only the last MAX_DEBUG_EVENTS
+      if (debugEvents.length > MAX_DEBUG_EVENTS) {
+        debugEvents = debugEvents.slice(0, MAX_DEBUG_EVENTS);
+      }
+      
+      // Update UI
+      renderDebugEvents();
+      
+      // Update badge
+      const badge = document.getElementById('debugEventCount');
+      badge.textContent = debugEvents.length;
+      badge.style.display = debugEvents.length > 0 ? 'inline' : 'none';
+    }
+    
+    function renderDebugEvents() {
+      const container = document.getElementById('debugConsoleContent');
+      
+      if (debugEvents.length === 0) {
+        container.innerHTML = `
+          <div style="color: #888; text-align: center; padding: 20px;">
+            Waiting for game events...
+          </div>
+        `;
+        return;
+      }
+      
+      container.innerHTML = debugEvents.map(event => {
+        const time = new Date(event.metadata.timestamp || event.metadata.receivedAt);
+        const timeStr = time.toLocaleTimeString() + '.' + time.getMilliseconds();
+        
+        return `
+          <div class="debug-event ${event.type}">
+            <div class="debug-event-header">
+              <span class="debug-event-type">${event.type}</span>
+              <span class="debug-event-time">${timeStr}</span>
+            </div>
+            <div class="debug-event-data">${JSON.stringify(event.data, null, 2)}</div>
+          </div>
+        `;
+      }).join('');
+    }
+    
+    function updateDebugStats() {
+      document.getElementById('debugTotalEvents').textContent = totalEventCount;
+      document.getElementById('debugBatchSize').textContent = eventQueue.length;
+      document.getElementById('debugActiveGame').textContent = activeGameFrame ?
+        (currentGeneratedGame?.gameId || gameId || 'unknown') : 'none';
+    }
+    
+    function exportDebugEvents() {
+      const exportData = {
+        sessionId: sessionId,
+        exportedAt: new Date().toISOString(),
+        totalEvents: totalEventCount,
+        events: debugEvents
+      };
+      
+      const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `game-events-${sessionId.substring(0, 8)}-${Date.now()}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+    }
 
     // Tab switching
     function switchTab(tabName) {
@@ -718,9 +1154,16 @@
         
         if (data.generateGame) {
           currentGeneratedGame = data.generateGame;
-          document.getElementById('generatedGameFrame').srcdoc = data.generateGame.gameHtml;
+          const iframe = document.getElementById('generatedGameFrame');
+          iframe.srcdoc = data.generateGame.gameHtml;
+          
+          // Set active frame and inject config
+          activeGameFrame = iframe;
+          injectGameConfig(iframe, data.generateGame.gameId, 'player1');
+          
           document.getElementById('generatedPreview').classList.add('active');
           showStatus('Game generated successfully!', 'success');
+          updateDebugStats();
         }
       } catch (error) {
         showStatus('Failed to generate game: ' + error.message, 'error');
@@ -797,10 +1240,17 @@
         });
         
         if (data.convertToMultiplayer) {
-          document.getElementById('convertedGameFrame').src = data.convertToMultiplayer.gameUrl;
+          const iframe = document.getElementById('convertedGameFrame');
+          iframe.src = data.convertToMultiplayer.gameUrl;
+          
+          // Set active frame and inject config
+          activeGameFrame = iframe;
+          injectGameConfig(iframe, gameId, 'player1');
+          
           document.getElementById('convertedGameUrl').href = data.convertToMultiplayer.gameUrl;
           document.getElementById('convertedGameUrl').textContent = data.convertToMultiplayer.gameUrl;
           document.getElementById('convertedPreview').classList.add('active');
+          updateDebugStats();
         }
       } catch (error) {
         alert('Failed to convert game: ' + error.message);
