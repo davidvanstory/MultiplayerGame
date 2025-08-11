@@ -273,16 +273,21 @@
       const startObserving = () => {
         if (document.body) {
           observer.observe(document.body, {
-        subtree: true,
-        childList: true,
-        characterData: true,
-        attributes: true,
-        attributeOldValue: true,
-        characterDataOldValue: true,
-        attributeFilter: ['data-game-state', 'data-player', 'data-value', 'class', 'style']
-      });
+            subtree: true,
+            childList: true,
+            characterData: true,
+            attributes: true,
+            attributeOldValue: true,
+            characterDataOldValue: true,
+            attributeFilter: ['data-game-state', 'data-player', 'data-value', 'class', 'style']
+          });
+          this.observers.push(observer);
+        } else {
+          setTimeout(startObserving, 10);
+        }
+      };
       
-      this.observers.push(observer);
+      startObserving();
     }
     
     /**

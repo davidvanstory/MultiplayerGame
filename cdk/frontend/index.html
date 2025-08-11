@@ -612,6 +612,7 @@
     let currentGameId = null; // Current game ID for state updates
     let selectedFeatures = new Set();
     let mainInterfaceEvents = null; // GameEventBridge for main UI
+    window.mainInterfaceEvents = mainInterfaceEvents;
 
     // Event System Variables
     let eventQueue = [];
@@ -642,6 +643,9 @@
           batchInterval: 100,
           autoIntercept: true
         });
+        
+        // Make mainInterfaceEvents globally accessible
+        window.mainInterfaceEvents = mainInterfaceEvents;
         
         // Store platform user ID
         if (!localStorage.getItem('platformUserId')) {
@@ -1070,11 +1074,11 @@
       URL.revokeObjectURL(url);
     }
 
-    // Tab switching
-    function switchTab(tabName) {
+    // Tab switching (moved outside functions to be globally accessible)
+    window.switchTab = function(tabName) {
       // Emit tab switch event
-      if (mainInterfaceEvents) {
-        mainInterfaceEvents.emit('INTERACTION', {
+      if (window.mainInterfaceEvents) {
+        window.mainInterfaceEvents.emit('INTERACTION', {
           action: 'tab_switch',
           from: document.querySelector('.tab.active')?.getAttribute('data-tab'),
           to: tabName
@@ -1092,7 +1096,7 @@
       // Show selected tab
       document.getElementById(tabName + 'Tab').classList.add('active');
       event.target.classList.add('active');
-    }
+    };
 
     // Simple GraphQL client with optional silent mode
     async function graphqlRequest(query, variables = {}, silent = false) {
@@ -1125,16 +1129,18 @@
     }
 
     // Create new game
-    document.getElementById('createGame').addEventListener('click', async () => {
-      // Emit game creation start event
-      if (mainInterfaceEvents) {
-        mainInterfaceEvents.emit('INTERACTION', {
-          action: 'create_game_clicked',
-          gameType: 'counter'
-        });
-      }
-      
-      try {
+    const createGameBtn = document.getElementById('createGame');
+    if (createGameBtn) {
+      createGameBtn.addEventListener('click', async () => {
+        // Emit game creation start event
+        if (mainInterfaceEvents) {
+          mainInterfaceEvents.emit('INTERACTION', {
+            action: 'create_game_clicked',
+            gameType: 'counter'
+          });
+        }
+        
+        try {
         const mutation = `
           mutation CreateGame($input: CreateGameInput!) {
             createGame(input: $input) {
@@ -1201,29 +1207,32 @@
         
         startGame();
         subscribeToUpdates();
-      } catch (error) {
-        alert('Failed to create game: ' + error.message);
-      }
-    });
+        } catch (error) {
+          alert('Failed to create game: ' + error.message);
+        }
+      });
+    }
 
     // Join existing game
-    document.getElementById('joinGame').addEventListener('click', async () => {
-      console.log('Join game button clicked');
-      const inputGameId = document.getElementById('joinGameId').value.trim();
-      console.log('Game ID entered:', inputGameId);
-      
-      // Emit join game attempt event
-      if (mainInterfaceEvents) {
+    const joinGameBtn = document.getElementById('joinGame');
+    if (joinGameBtn) {
+      joinGameBtn.addEventListener('click', async () => {
+        console.log('Join game button clicked');
+        const inputGameId = document.getElementById('joinGameId').value.trim();
+        console.log('Game ID entered:', inputGameId);
+        
+        // Emit join game attempt event
+        if (mainInterfaceEvents) {
         mainInterfaceEvents.emit('INTERACTION', {
           action: 'join_game_clicked',
           gameId: inputGameId
         });
-      }
-      
-      if (!inputGameId) {
-        alert('Please enter a game ID');
-        return;
-      }
+        }
+        
+        if (!inputGameId) {
+          alert('Please enter a game ID');
+          return;
+        }
       
       try {
         console.log('Attempting to join game:', inputGameId);
@@ -1275,10 +1284,13 @@
       } catch (error) {
         alert('Failed to join game: ' + error.message);
       }
-    });
+      });
+    }
 
     // Take turn
-    document.getElementById('takeTurn').addEventListener('click', async () => {
+    const takeTurnBtn = document.getElementById('takeTurn');
+    if (takeTurnBtn) {
+      takeTurnBtn.addEventListener('click', async () => {
       if (!gameState || !gameState.gameActive) return;
       
       // Emit turn attempt event
@@ -1291,7 +1303,7 @@
       }
       
       // Disable button during processing
-      const takeTurnBtn = document.getElementById('takeTurn');
+      // takeTurnBtn already declared in outer scope
       takeTurnBtn.disabled = true;
       takeTurnBtn.textContent = 'Processing...';
       
@@ -1376,6 +1388,7 @@
         takeTurnBtn.textContent = 'Take Turn';
       }
     });
+    }
 
     // Add action feedback display function
     function showActionFeedback(message, type) {
@@ -1555,15 +1568,21 @@
     }
 
     // Copy game ID
-    document.getElementById('copyGameId').addEventListener('click', () => {
-      navigator.clipboard.writeText(gameId);
-      alert('Game ID copied to clipboard!');
-    });
+    const copyGameIdBtn = document.getElementById('copyGameId');
+    if (copyGameIdBtn) {
+      copyGameIdBtn.addEventListener('click', () => {
+        navigator.clipboard.writeText(gameId);
+        alert('Game ID copied to clipboard!');
+      });
+    }
 
     // New game
-    document.getElementById('newGame').addEventListener('click', () => {
-      location.reload();
-    });
+    const newGameBtn = document.getElementById('newGame');
+    if (newGameBtn) {
+      newGameBtn.addEventListener('click', () => {
+        location.reload();
+      });
+    }
 
     // Subscribe to game updates (simplified - in production use AWS Amplayer)
     let updateInterval = null;
@@ -1638,8 +1657,10 @@
     });
     
     // Generate game with AI
-    document.getElementById('generateGameBtn').addEventListener('click', async () => {
-      if (!selectedGameType) {
+    const generateGameBtn = document.getElementById('generateGameBtn');
+    if (generateGameBtn) {
+      generateGameBtn.addEventListener('click', async () => {
+        if (!selectedGameType) {
         showStatus('Please select a game type', 'error');
         return;
       }
@@ -1715,11 +1736,14 @@
       } finally {
         showLoading(false);
       }
-    });
+      });
+    }
     
     // Convert generated game to multiplayer
-    document.getElementById('convertGeneratedBtn').addEventListener('click', async () => {
-      if (!currentGeneratedGame) {
+    const convertGeneratedBtn = document.getElementById('convertGeneratedBtn');
+    if (convertGeneratedBtn) {
+      convertGeneratedBtn.addEventListener('click', async () => {
+        if (!currentGeneratedGame) {
         alert('No game to convert');
         return;
       }
@@ -1752,11 +1776,14 @@
         document.getElementById('convertGeneratedBtn').disabled = false;
         document.getElementById('convertGeneratedBtn').textContent = '🌐 Convert to Multiplayer';
       }
-    });
+      });
+    }
     
     // Convert pasted HTML to multiplayer
-    document.getElementById('convertHtmlBtn').addEventListener('click', async () => {
-      const html = document.getElementById('singlePlayerHtml').value;
+    const convertHtmlBtn = document.getElementById('convertHtmlBtn');
+    if (convertHtmlBtn) {
+      convertHtmlBtn.addEventListener('click', async () => {
+        const html = document.getElementById('singlePlayerHtml').value;
       if (!html) {
         alert('Please paste HTML code first');
         return;
@@ -1794,7 +1821,8 @@
         document.getElementById('convertHtmlBtn').textContent = '🎮 Convert to Multiplayer';
         hideConvertStatus();
       }
-    });
+      });
+    }
     
     async function pollConversionStatus(gameId, buttonId) {
       const button = document.getElementById(buttonId);
