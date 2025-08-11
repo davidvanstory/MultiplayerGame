@@ -471,6 +471,15 @@
       </div>
     </div>
   </div>
+  
+  <div class="preview-container" id="joinedGamePreview">
+    <h3>Joined Game</h3>
+    <iframe class="preview-iframe" id="joinedGameFrame"></iframe>
+    <div class="status" style="margin-top: 15px;">
+      <strong>Game ID:</strong> <span id="joinedGameId"></span>
+      <button onclick="navigator.clipboard.writeText(document.getElementById('joinedGameId').textContent)" style="margin-left: 10px;">📋 Copy ID</button>
+    </div>
+  </div>
   </div>
   
   <!-- Create with AI Tab -->
@@ -935,18 +944,16 @@
           return;
         }
         
-        // Load the game in an iframe
+        // Load the game in the preview container following the same pattern
         const gameUrl = `https://d17uiucy3a9bfl.cloudfront.net/games/${gameId}/index.html`;
-        const iframe = document.createElement('iframe');
+        const iframe = document.getElementById('joinedGameFrame');
         iframe.src = gameUrl;
-        iframe.style.width = '100%';
-        iframe.style.height = '600px';
-        iframe.style.border = 'none';
         
-        // Replace current content
-        const gameContainer = document.getElementById('gameContainer') || document.body;
-        gameContainer.innerHTML = '';
-        gameContainer.appendChild(iframe);
+        // Update the game ID display
+        document.getElementById('joinedGameId').textContent = gameId;
+        
+        // Show the preview container
+        document.getElementById('joinedGamePreview').classList.add('active');
         
         // Wait for iframe to load and inject config
         iframe.addEventListener('load', async () => {
@@ -1223,67 +1230,19 @@
         
         // Emit join game attempt event
         if (mainInterfaceEvents) {
-        mainInterfaceEvents.emit('INTERACTION', {
-          action: 'join_game_clicked',
-          gameId: inputGameId
-        });
+          mainInterfaceEvents.emit('INTERACTION', {
+            action: 'join_game_clicked',
+            gameId: inputGameId
+          });
         }
         
         if (!inputGameId) {
           alert('Please enter a game ID');
           return;
         }
-      
-      try {
-        console.log('Attempting to join game:', inputGameId);
-        const mutation = `
-          mutation JoinGame($gameId: ID!, $playerInfo: AWSJSON!) {
-            joinGame(gameId: $gameId, playerInfo: $playerInfo) {
-              gameId
-              gameType
-              gameState
-              players
-              metadata
-            }
-          }
-        `;
         
-        const playerId = 'player-' + Math.random().toString(36).substring(2, 11);
-        const data = await graphqlRequest(mutation, {
-          gameId: inputGameId,
-          playerInfo: JSON.stringify({
-            player2: playerId
-          })
-        });
-        
-        gameId = inputGameId;
-        playerNumber = 2;
-        localStorage.setItem('playerId', playerId);
-        
-        // Parse the AWSJSON gameState
-        const parsedState = JSON.parse(data.joinGame.gameState);
-        gameState = parsedState;
-        
-        // Emit game joined success event
-        if (mainInterfaceEvents) {
-          mainInterfaceEvents.emit('TRANSITION', {
-            state: 'game_joined',
-            gameId: gameId,
-            playerNumber: playerNumber
-          });
-        }
-        
-        document.getElementById('setup').style.display = 'none';
-        document.getElementById('gameArea').style.display = 'block';
-        document.getElementById('gameId').textContent = gameId;
-        document.getElementById('playerRole').textContent = 'Player 2';
-        document.getElementById('playerRole').className = 'player-indicator player2';
-        
-        startGame();
-        subscribeToUpdates();
-      } catch (error) {
-        alert('Failed to join game: ' + error.message);
-      }
+        // Use the existing joinExistingGame function that loads game in iframe
+        await joinExistingGame(inputGameId);
       });
     }
 
