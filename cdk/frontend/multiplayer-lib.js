@@ -597,6 +597,11 @@
      * @param {*} data - Additional data to log
      */
     _log(message, data) {
+      // Skip routine UPDATE event logging unless verbose mode is on
+      if (message.includes('UPDATE') && !window.DEBUG_ALL_EVENTS) {
+        return;
+      }
+      
       if (this.debug) {
         console.log(`[GameEventBridge] ${message}`, data || '');
       }

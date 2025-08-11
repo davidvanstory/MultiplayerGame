@@ -372,6 +372,24 @@
     <span class="badge" id="debugEventCount" style="display: none;">0</span>
   </div>
   
+  <!-- Polling Control Button -->
+  <button id="pausePollingBtn" onclick="togglePolling()" style="
+    position: fixed;
+    bottom: 20px;
+    left: 20px;
+    background: #e74c3c;
+    color: white;
+    padding: 10px 15px;
+    border: none;
+    border-radius: 25px;
+    cursor: pointer;
+    z-index: 1000;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+    font-size: 14px;
+    font-weight: bold;
+    display: none;
+  ">⏸️ Pause Polling</button>
+  
   <div class="debug-console" id="debugConsole">
     <div class="debug-console-header">
       <div class="debug-console-title">Event Debug Console</div>
@@ -930,9 +948,11 @@
       event.target.classList.add('active');
     }
 
-    // Simple GraphQL client with error logging
-    async function graphqlRequest(query, variables = {}) {
-      console.log('GraphQL Request:', { query: query.substring(0, 100), variables });
+    // Simple GraphQL client with optional silent mode
+    async function graphqlRequest(query, variables = {}, silent = false) {
+      if (!silent) {
+        console.log('GraphQL Request:', { query: query.substring(0, 100), variables });
+      }
       const response = await fetch(API_ENDPOINT, {
         method: 'POST',
         headers: {
@@ -942,11 +962,17 @@
         body: JSON.stringify({ query, variables })
       });
       const result = await response.json();
-      console.log('GraphQL Response:', result);
+      if (!silent) {
+        console.log('GraphQL Response:', result);
+      }
       if (result.errors) {
-        console.error('GraphQL errors:', result.errors);
+        if (!silent) {
+          console.error('GraphQL errors:', result.errors);
+        }
         const errorMsg = result.errors[0].message || 'Unknown GraphQL error';
-        alert('API Error: ' + errorMsg);
+        if (!silent) {
+          alert('API Error: ' + errorMsg);
+        }
         throw new Error(errorMsg);
       }
       return result.data;
@@ -1166,6 +1192,8 @@
     // Start game UI
     function startGame() {
       updateGameState({ counter: 0, gameActive: true, currentTurn: 1 });
+      // Show pause polling button when game is active
+      document.getElementById('pausePollingBtn').style.display = 'block';
     }
 
     // Update game state
@@ -1198,9 +1226,14 @@
     });
 
     // Subscribe to game updates (simplified - in production use AWS Amplayer)
+    let updateInterval = null;
+    let pausePolling = false;
+    
     function subscribeToUpdates() {
       // Poll for updates every 2 seconds (simplified approach)
-      setInterval(async () => {
+      updateInterval = setInterval(async () => {
+        if (pausePolling) return; // Skip if paused
+        
         try {
           const query = `
             query GetGame($gameId: ID!) {
@@ -1212,15 +1245,34 @@
             }
           `;
           
-          const data = await graphqlRequest(query, { gameId });
+          // Only log in debug mode to reduce console spam
+          if (window.DEBUG_POLLING) {
+            console.log('Polling for game updates...');
+          }
+          
+          const data = await graphqlRequest(query, { gameId }, true); // Silent mode
           if (data.getGame && data.getGame.gameState) {
             const parsedState = JSON.parse(data.getGame.gameState);
             updateGameState(parsedState);
           }
         } catch (error) {
-          console.error('Failed to fetch game state:', error);
+          // Only log errors if not a routine polling error
+          if (!error.message.includes('not found')) {
+            console.error('Failed to fetch game state:', error);
+          }
         }
       }, 2000);
+    }
+    
+    // Add function to toggle polling
+    function togglePolling() {
+      pausePolling = !pausePolling;
+      const btn = document.getElementById('pausePollingBtn');
+      if (btn) {
+        btn.textContent = pausePolling ? '▶️ Resume Polling' : '⏸️ Pause Polling';
+        btn.style.background = pausePolling ? '#27ae60' : '#e74c3c';
+      }
+      console.log(pausePolling ? '⏸️ Polling paused' : '▶️ Polling resumed');
     }
 
     // Template buttons for game type selection

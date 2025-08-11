@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Counter Game</title>
+</head>
+<body>
+  <h1>Counter Game</h1>
+  <div>Current Player: <span id="currentPlayer" data-game-state="player">Player 1</span></div>
+  <div>Counter: <span id="counter">0</span></div>
+  <div>Target: <span id="target">10</span></div>
+  <button onclick="increment()" data-game-action="button">Increment</button>
+  <button onclick="reset()" data-game-action="button">Reset</button>
+  <script>
+    let counter = 0;
+    let currentPlayer = 1;
+    const target = 10;
+    
+    function increment() {
+      counter++;
+      document.getElementById('counter').textContent = counter;
+      if (counter >= target) {
+        alert('Player ' + currentPlayer + ' wins!');
+        reset();
+      } else {
+        currentPlayer = currentPlayer === 1 ? 2 : 1;
+        document.getElementById('currentPlayer').textContent = 'Player ' + currentPlayer;
+      }
+    }
+    
+    function reset() {
+      counter = 0;
+      currentPlayer = 1;
+      document.getElementById('counter').textContent = counter;
+      document.getElementById('currentPlayer').textContent = 'Player ' + currentPlayer;
+    }
+  </script>
+</body>
+</html>

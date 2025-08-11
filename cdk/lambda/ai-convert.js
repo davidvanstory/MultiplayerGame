@@ -93,56 +93,156 @@ function analyzeGameElements(html) {
 }
 
 /**
- * Detects the type of game based on HTML content analysis
+ * Dynamically detects the type of game based on HTML content analysis
+ * Uses intelligent pattern matching and contextual analysis rather than hardcoded types
  * @param {string} html - The HTML content to analyze
  * @returns {string} The detected game type
  */
 function detectGameType(html) {
-  console.log('Detecting game type from HTML patterns');
+  console.log('Dynamically detecting game type from HTML content');
   
-  const patterns = {
-    'tictactoe': /tic[\s-]?tac[\s-]?toe|ttt|x[\s-]?and[\s-]?o|noughts/i,
-    'chess': /chess|rook|knight|bishop|queen|king|checkmate|castle/i,
-    'checkers': /checkers|draughts|king\s*me/i,
-    'connect4': /connect[\s-]?(?:4|four)|four[\s-]?in[\s-]?a[\s-]?row/i,
-    'memory': /memory|match|pairs|concentration/i,
-    'puzzle': /puzzle|jigsaw|sliding|tile/i,
-    'snake': /snake|serpent|tail/i,
-    'tetris': /tetris|tetromino|block[\s-]?fall/i,
-    'breakout': /breakout|brick|paddle|ball/i,
-    'platformer': /platform|jump|gravity|collision/i,
-    'shooter': /shoot|fire|bullet|enemy|laser/i,
-    'rpg': /health|mana|quest|inventory|level[\s-]?up/i,
-    'card': /card|deck|shuffle|deal|hand/i,
-    'dice': /dice|roll|d6|d20/i,
-    'trivia': /quiz|trivia|question|answer|correct/i,
-    'word': /word|letter|guess|hangman|scrabble/i
-  };
+  // Extract potential game name from title, h1, or comments
+  const titleMatch = html.match(/<title>([^<]+)<\/title>/i);
+  const h1Match = html.match(/<h1[^>]*>([^<]+)<\/h1>/i);
+  const gameNameComment = html.match(/<!--\s*game[:\s]+([^-]+)-->/i);
   
-  // Check each pattern
-  for (const [gameType, pattern] of Object.entries(patterns)) {
-    if (pattern.test(html)) {
-      console.log(`Detected game type: ${gameType}`);
-      return gameType;
+  let detectedName = null;
+  if (titleMatch) {
+    detectedName = titleMatch[1].toLowerCase().trim();
+  } else if (h1Match) {
+    detectedName = h1Match[1].toLowerCase().trim();
+  } else if (gameNameComment) {
+    detectedName = gameNameComment[1].toLowerCase().trim();
+  }
+  
+  // Clean up common words to get core game name
+  if (detectedName) {
+    detectedName = detectedName
+      .replace(/\b(game|play|online|free|new|my|the|a)\b/gi, '')
+      .replace(/[^\w\s-]/g, '')
+      .replace(/\s+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .trim();
+    
+    if (detectedName && detectedName.length > 2) {
+      console.log(`Detected game name from metadata: ${detectedName}`);
+      return detectedName;
     }
   }
   
-  // Check for generic patterns
+  // Analyze game characteristics to build a descriptive type
+  const characteristics = [];
+  
+  // Check for board/grid characteristics
+  if (/class=["'][^"']*board[^"']*["']/i.test(html) || 
+      /id=["'][^"']*board[^"']*["']/i.test(html) ||
+      /grid|cell|tile|square/i.test(html)) {
+    characteristics.push('board');
+    
+    // Try to detect grid size
+    const gridSizeMatch = html.match(/(\d+)[x×](\d+)/i);
+    if (gridSizeMatch) {
+      characteristics.push(`${gridSizeMatch[1]}x${gridSizeMatch[2]}`);
+    }
+  }
+  
+  // Check for card game elements
+  if (/card|deck|suit|spade|heart|diamond|club|ace|king|queen|jack/i.test(html)) {
+    characteristics.push('card');
+  }
+  
+  // Check for dice elements
+  if (/dice|roll|d\d+|die/i.test(html)) {
+    characteristics.push('dice');
+  }
+  
+  // Check for word/text game elements
+  if (/word|letter|alphabet|spell|vocabulary/i.test(html)) {
+    characteristics.push('word');
+  }
+  
+  // Check for puzzle elements
+  if (/puzzle|piece|solve|match|pattern/i.test(html)) {
+    characteristics.push('puzzle');
+  }
+  
+  // Check for quiz/trivia elements
+  if (/question|answer|quiz|trivia|correct|wrong|score/i.test(html)) {
+    characteristics.push('quiz');
+  }
+  
+  // Check for action game elements
+  if (/shoot|fire|bullet|enemy|laser|weapon|attack/i.test(html)) {
+    characteristics.push('shooter');
+  } else if (/jump|platform|gravity|fall|climb/i.test(html)) {
+    characteristics.push('platformer');
+  } else if (/race|speed|track|lap|finish/i.test(html)) {
+    characteristics.push('racing');
+  }
+  
+  // Check for turn-based mechanics
+  if (/turn|player\s*[12]|current\s*player|whose\s*turn/i.test(html)) {
+    characteristics.push('turn-based');
+  }
+  
+  // Check for real-time mechanics
+  if (/requestAnimationFrame|setInterval\s*\([^,]+,\s*\d{1,2}\d?\)/i.test(html)) {
+    characteristics.push('realtime');
+  }
+  
+  // Check for canvas usage
   if (/<canvas/i.test(html)) {
-    if (/requestAnimationFrame/i.test(html)) {
-      return 'arcade';
+    characteristics.push('canvas');
+  }
+  
+  // Check for strategy elements
+  if (/strategy|tactic|plan|resource|build|defend/i.test(html)) {
+    characteristics.push('strategy');
+  }
+  
+  // Check for RPG elements
+  if (/health|hp|mana|mp|level|exp|quest|inventory|skill/i.test(html)) {
+    characteristics.push('rpg');
+  }
+  
+  // Build dynamic game type from characteristics
+  if (characteristics.length > 0) {
+    // Sort characteristics by priority (more specific first)
+    const priority = ['shooter', 'platformer', 'racing', 'rpg', 'card', 'dice', 
+                     'word', 'quiz', 'puzzle', 'strategy', 'board', 'turn-based', 
+                     'realtime', 'canvas'];
+    
+    characteristics.sort((a, b) => {
+      const aIndex = priority.indexOf(a);
+      const bIndex = priority.indexOf(b);
+      if (aIndex === -1) return 1;
+      if (bIndex === -1) return -1;
+      return aIndex - bIndex;
+    });
+    
+    // Take the most relevant characteristics
+    const gameType = characteristics.slice(0, 2).join('-');
+    console.log(`Dynamically detected game type: ${gameType} (from characteristics: ${characteristics.join(', ')})`);
+    return gameType;
+  }
+  
+  // Final fallback - try to extract from game function names or variables
+  const functionMatch = html.match(/function\s+(\w*[Gg]ame\w*)/);
+  const classMatch = html.match(/class\s+(\w*[Gg]ame\w*)/);
+  const varMatch = html.match(/(?:const|let|var)\s+(\w*[Gg]ame\w*)/);
+  
+  if (functionMatch || classMatch || varMatch) {
+    const gameName = (functionMatch || classMatch || varMatch)[1]
+      .replace(/Game/gi, '')
+      .toLowerCase();
+    if (gameName && gameName.length > 2) {
+      console.log(`Detected game type from code structure: ${gameName}`);
+      return gameName;
     }
-    return 'canvas-based';
   }
   
-  if (/board|grid|cell/i.test(html)) {
-    return 'board-game';
-  }
-  
-  if (/turn|player\s*\d/i.test(html)) {
-    return 'turn-based';
-  }
-  
+  // Ultimate fallback
+  console.log('Could not determine specific game type, using generic classification');
   return 'custom-game';
 }
 
@@ -363,6 +463,399 @@ function injectDataAttributes(html, analysis) {
   }
   
   return modifiedHtml;
+}
+
+/**
+ * Generates server-side validation code for the game
+ * @param {Object} analysis - Results from analyzeGameStructure
+ * @returns {string} Lambda function code for validation
+ */
+function generateServerValidator(analysis) {
+  console.log('Generating server-side validator for game type:', analysis.gameType);
+  
+  // Base validator template with game-specific logic
+  let validatorCode = `
+// Auto-generated server-side validator for ${analysis.gameType} game
+// Generated at: ${new Date().toISOString()}
+// Complexity: ${analysis.complexity.level}
+
+exports.handler = async (event) => {
+  console.log('Validating game action:', JSON.stringify(event));
+  
+  const { action, gameState, playerId, data, gameId } = event;
+  
+  // Validation result structure
+  const result = {
+    valid: false,
+    reason: '',
+    updatedState: null,
+    broadcast: null,
+    timestamp: Date.now()
+  };
+  
+  try {
+    // Parse game state if string
+    const state = typeof gameState === 'string' ? JSON.parse(gameState) : gameState;
+    
+    // Initialize state if empty
+    if (!state || Object.keys(state).length === 0) {
+      result.valid = true;
+      result.updatedState = {
+        players: {},
+        gameActive: false,
+        createdAt: Date.now(),
+        ${analysis.mechanics.hasBoard ? "board: createEmptyBoard()," : ""}
+        ${analysis.mechanics.hasScore ? "scores: {}," : ""}
+        ${analysis.mechanics.hasTurns ? "currentTurn: null," : ""}
+        ${analysis.mechanics.hasLives ? "lives: {}," : ""}
+        ${analysis.mechanics.hasTimer ? "timer: { start: null, elapsed: 0 }," : ""}
+        gameType: '${analysis.gameType}'
+      };
+      return result;
+    }
+    
+    // Validate based on action type
+    switch(action) {
+      case 'join':
+        return handleJoinGame(state, playerId, data);
+      
+      case 'start':
+        return handleStartGame(state, playerId, data);
+      
+      case 'move':
+        return handleMove(state, playerId, data);
+      
+      case 'update':
+        return handleUpdate(state, playerId, data);
+      
+      case 'end':
+        return handleEndGame(state, playerId, data);
+      
+      default:
+        // Allow custom actions
+        return handleCustomAction(action, state, playerId, data);
+    }
+    
+  } catch (error) {
+    console.error('Validation error:', error);
+    result.reason = 'Validation error: ' + error.message;
+    return result;
+  }
+};
+
+// Handle player joining
+function handleJoinGame(state, playerId, data) {
+  const maxPlayers = ${analysis.mechanics.hasTurns ? 2 : 8};
+  
+  if (state.players && Object.keys(state.players).length >= maxPlayers) {
+    return { valid: false, reason: 'Game is full' };
+  }
+  
+  if (state.players && state.players[playerId]) {
+    return { valid: false, reason: 'Player already in game' };
+  }
+  
+  const updatedState = {
+    ...state,
+    players: {
+      ...state.players,
+      [playerId]: {
+        id: playerId,
+        joinedAt: Date.now(),
+        ${analysis.mechanics.hasScore ? "score: 0," : ""}
+        ${analysis.mechanics.hasLives ? "lives: 3," : ""}
+        active: true,
+        ...data
+      }
+    }
+  };
+  
+  ${analysis.mechanics.hasTurns ? `
+  // Set first player as current turn
+  if (!state.currentTurn && Object.keys(updatedState.players).length === 1) {
+    updatedState.currentTurn = playerId;
+  }` : ""}
+  
+  return {
+    valid: true,
+    updatedState,
+    broadcast: {
+      type: 'PLAYER_JOINED',
+      playerId,
+      playerCount: Object.keys(updatedState.players).length
+    }
+  };
+}
+
+// Handle game start
+function handleStartGame(state, playerId, data) {
+  if (state.gameActive) {
+    return { valid: false, reason: 'Game already active' };
+  }
+  
+  const playerCount = Object.keys(state.players || {}).length;
+  if (playerCount < ${analysis.mechanics.hasTurns ? 2 : 1}) {
+    return { valid: false, reason: 'Not enough players' };
+  }
+  
+  const updatedState = {
+    ...state,
+    gameActive: true,
+    startedAt: Date.now(),
+    ${analysis.mechanics.hasTimer ? "timer: { start: Date.now(), elapsed: 0 }," : ""}
+    ${analysis.mechanics.hasBoard ? "board: createEmptyBoard()," : ""}
+    ${analysis.mechanics.hasTurns ? "currentTurn: Object.keys(state.players)[0]," : ""}
+    ...data
+  };
+  
+  return {
+    valid: true,
+    updatedState,
+    broadcast: {
+      type: 'GAME_STARTED',
+      startedBy: playerId
+    }
+  };
+}
+
+// Handle player moves
+function handleMove(state, playerId, data) {
+  if (!state.gameActive) {
+    return { valid: false, reason: 'Game not active' };
+  }
+  
+  if (!state.players || !state.players[playerId]) {
+    return { valid: false, reason: 'Player not in game' };
+  }
+  
+  ${analysis.mechanics.hasTurns ? `
+  // Validate turn
+  if (state.currentTurn !== playerId) {
+    return { valid: false, reason: 'Not your turn' };
+  }` : ""}
+  
+  ${analysis.mechanics.hasBoard ? `
+  // Validate board move
+  if (data.position !== undefined) {
+    if (!isValidBoardMove(state.board, data.position, playerId)) {
+      return { valid: false, reason: 'Invalid board position' };
+    }
+  }` : ""}
+  
+  // Apply move
+  const updatedState = {
+    ...state,
+    lastMove: {
+      playerId,
+      data,
+      timestamp: Date.now()
+    },
+    ${analysis.mechanics.hasBoard ? "board: applyBoardMove(state.board, data.position, playerId)," : ""}
+    ${analysis.mechanics.hasTurns ? "currentTurn: getNextPlayer(state.players, playerId)," : ""}
+    moveCount: (state.moveCount || 0) + 1
+  };
+  
+  // Check win condition
+  ${analysis.mechanics.hasWinCondition ? `
+  const winner = checkWinCondition(updatedState);
+  if (winner) {
+    updatedState.gameActive = false;
+    updatedState.winner = winner;
+    updatedState.endedAt = Date.now();
+  }` : ""}
+  
+  return {
+    valid: true,
+    updatedState,
+    broadcast: {
+      type: 'MOVE_MADE',
+      playerId,
+      move: data,
+      ${analysis.mechanics.hasTurns ? "nextTurn: updatedState.currentTurn," : ""}
+      ${analysis.mechanics.hasWinCondition ? "winner: updatedState.winner," : ""}
+    }
+  };
+}
+
+// Handle state updates
+function handleUpdate(state, playerId, data) {
+  if (!state.players || !state.players[playerId]) {
+    return { valid: false, reason: 'Player not in game' };
+  }
+  
+  const updatedState = { ...state };
+  
+  ${analysis.mechanics.hasScore ? `
+  // Handle score update
+  if (data.score !== undefined) {
+    updatedState.players = {
+      ...updatedState.players,
+      [playerId]: {
+        ...updatedState.players[playerId],
+        score: Math.max(0, data.score)
+      }
+    };
+  }` : ""}
+  
+  ${analysis.mechanics.hasLives ? `
+  // Handle lives update
+  if (data.lives !== undefined) {
+    updatedState.players = {
+      ...updatedState.players,
+      [playerId]: {
+        ...updatedState.players[playerId],
+        lives: Math.max(0, data.lives)
+      }
+    };
+    
+    // Check if player is out
+    if (updatedState.players[playerId].lives <= 0) {
+      updatedState.players[playerId].eliminated = true;
+    }
+  }` : ""}
+  
+  return {
+    valid: true,
+    updatedState,
+    broadcast: {
+      type: 'STATE_UPDATE',
+      playerId,
+      updates: data
+    }
+  };
+}
+
+// Handle game end
+function handleEndGame(state, playerId, data) {
+  if (!state.gameActive) {
+    return { valid: false, reason: 'Game not active' };
+  }
+  
+  const updatedState = {
+    ...state,
+    gameActive: false,
+    endedAt: Date.now(),
+    endedBy: playerId,
+    winner: data.winner || null,
+    finalScores: getFinalScores(state.players),
+    ...data
+  };
+  
+  return {
+    valid: true,
+    updatedState,
+    broadcast: {
+      type: 'GAME_ENDED',
+      endedBy: playerId,
+      winner: updatedState.winner,
+      finalScores: updatedState.finalScores
+    }
+  };
+}
+
+// Handle custom actions
+function handleCustomAction(action, state, playerId, data) {
+  // Allow passthrough for game-specific actions
+  console.log('Custom action:', action);
+  
+  return {
+    valid: true,
+    updatedState: state,
+    broadcast: {
+      type: 'CUSTOM_ACTION',
+      action,
+      playerId,
+      data
+    }
+  };
+}
+
+// Helper functions
+function getNextPlayer(players, currentPlayerId) {
+  const playerIds = Object.keys(players).filter(id => !players[id].eliminated);
+  const currentIndex = playerIds.indexOf(currentPlayerId);
+  return playerIds[(currentIndex + 1) % playerIds.length];
+}
+
+function getFinalScores(players) {
+  if (!players) return {};
+  return Object.keys(players).reduce((scores, id) => {
+    scores[id] = players[id].score || 0;
+    return scores;
+  }, {});
+}
+
+${analysis.mechanics.hasBoard ? `
+function createEmptyBoard() {
+  // Create appropriate board based on game type
+  ${analysis.elements.board.dimensions === '3x3' ? 
+    "return Array(3).fill(null).map(() => Array(3).fill(null));" :
+    analysis.elements.board.dimensions === '8x8' ?
+    "return Array(8).fill(null).map(() => Array(8).fill(null));" :
+    "return {}; // Dynamic board"
+  }
+}
+
+function isValidBoardMove(board, position, playerId) {
+  // Implement board validation logic
+  if (!board || !position) return false;
+  
+  ${analysis.elements.board.dimensions ? `
+  const [row, col] = position.split(',').map(Number);
+  if (!board[row] || board[row][col] === undefined) return false;
+  return board[row][col] === null;` : `
+  return board[position] === null || board[position] === undefined;`
+  }
+}
+
+function applyBoardMove(board, position, playerId) {
+  const newBoard = JSON.parse(JSON.stringify(board));
+  ${analysis.elements.board.dimensions ? `
+  const [row, col] = position.split(',').map(Number);
+  newBoard[row][col] = playerId;` : `
+  newBoard[position] = playerId;`
+  }
+  return newBoard;
+}` : ""}
+
+${analysis.mechanics.hasWinCondition ? `
+function checkWinCondition(state) {
+  // Implement win condition checking
+  ${analysis.gameType === 'tictactoe' ? `
+  // Tic-tac-toe win checking
+  const board = state.board;
+  if (!board) return null;
+  
+  // Check rows, columns, and diagonals
+  for (let i = 0; i < 3; i++) {
+    // Check rows
+    if (board[i][0] && board[i][0] === board[i][1] && board[i][1] === board[i][2]) {
+      return board[i][0];
+    }
+    // Check columns
+    if (board[0][i] && board[0][i] === board[1][i] && board[1][i] === board[2][i]) {
+      return board[0][i];
+    }
+  }
+  // Check diagonals
+  if (board[0][0] && board[0][0] === board[1][1] && board[1][1] === board[2][2]) {
+    return board[0][0];
+  }
+  if (board[0][2] && board[0][2] === board[1][1] && board[1][1] === board[2][0]) {
+    return board[0][2];
+  }
+  
+  // Check for draw
+  const isDraw = board.every(row => row.every(cell => cell !== null));
+  return isDraw ? 'draw' : null;` : `
+  // Generic win condition - implement based on game rules
+  return null;`
+  }
+}` : ""}
+`;
+  
+  console.log('Generated validator code length:', validatorCode.length);
+  return validatorCode;
 }
 
 /**
@@ -833,6 +1326,16 @@ Return ONLY the complete HTML code without any markdown formatting or explanatio
     throw new Error(`Failed to generate game: ${error.message}`);
   }
 }
+
+// Export functions for testing
+exports.analyzeGameStructure = analyzeGameStructure;
+exports.analyzeGameElements = analyzeGameElements;
+exports.detectGameType = detectGameType;
+exports.injectDataAttributes = injectDataAttributes;
+exports.generateServerValidator = generateServerValidator;
+exports.buildConversionPrompt = buildConversionPrompt;
+exports.injectMultiplayerLibrary = injectMultiplayerLibrary;
+exports.deployServerCode = deployServerCode;
 
 async function callOpenAI(prompt) {
   if (!process.env.OPENAI_API_KEY) {
