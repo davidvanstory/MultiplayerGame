@@ -7,6 +7,7 @@ type Game {
   players: AWSJSON!          # Support N players with flexible structure
   metadata: AWSJSON!         # Game-specific metadata (rules, settings, etc.)
   serverLogicUrl: String     # Lambda ARN for game-specific validation
+  conversionStatus: String
   createdAt: String!
   updatedAt: String!
 }
@@ -27,12 +28,6 @@ input UpdateGameInput {
   metadata: AWSJSON
 }
 
-type ConversionResult {
-  gameUrl: String!
-  gameId: String!
-  serverEndpoint: String!
-}
-
 type Query {
   getGame(gameId: ID!): Game
   listGames(gameType: String): [Game!]!
@@ -43,7 +38,7 @@ type Mutation {
   updateGame(input: UpdateGameInput!): Game!
   joinGame(gameId: ID!, playerInfo: AWSJSON!): Game!
   generateGame(gameType: String!, requirements: AWSJSON!): Game!
-  convertToMultiplayer(gameId: ID!, gameHtml: String!): ConversionResult!
+  convertToMultiplayer(gameId: ID!, gameHtml: String!): Game!
   processGameAction(gameId: ID!, action: AWSJSON!): AWSJSON!
 }
 
