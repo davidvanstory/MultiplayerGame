@@ -992,6 +992,28 @@ STATE UPDATE HANDLER (REQUIRED):
 - Update UI elements to reflect current server state
 - Handle player join/leave by updating player displays
 
+DEBUG LOGGING (REQUIRED FOR DEVELOPMENT):
+- Add comprehensive console.log statements throughout the code
+- Log all player actions: console.log('🎯 Player Action:', action, player, data)
+- Log all state changes: console.log('🔄 State Update:', oldState, newState)
+- Log all multiplayer events: console.log('📡 Multiplayer Event:', eventType, eventData)  
+- Log all function calls: console.log('🚀 Function Called:', functionName, arguments)
+- Add try-catch blocks around all major functions with error logging
+- Include a visible debug info panel showing current game state, players, and recent events
+- Add window.DEBUG_MULTIPLAYER = true; at the top of the script
+
+ERROR HANDLING (REQUIRED):
+- Wrap all major functions in try-catch blocks
+- Add null checks before accessing DOM elements (if (!element) return;)
+- Log errors with full context: console.error('❌ Error in functionName:', error, {context})
+- Gracefully handle missing elements or failed operations
+- Add fallback behaviors when multiplayer features fail
+
+LOGGING INTEGRATION (REQUIRED):
+- Call window.debugConsole?.addLog('GAME', message, data) for key events
+- Log player joins/leaves, moves, state changes, and errors
+- Include timestamp and player context in all logs
+
 ORIGINAL HTML:
 ${html}
 
@@ -1035,26 +1057,97 @@ function injectMultiplayerLibrary(html, gameId) {
         autoIntercept: true
       };
       
-      // Enable debug mode in development
+      // Force enable debug mode for all converted games
+      window.DEBUG_MULTIPLAYER = true;
+      window.DEBUG_ALL_EVENTS = true;
+      
+      // Immediate error debugging
+      window.addEventListener('error', function(e) {
+        console.error('🚨 JavaScript Error:', e.error);
+        console.error('📍 Error Location:', e.filename + ':' + e.lineno + ':' + e.colno);
+        console.error('📝 Error Message:', e.message);
+        console.error('🎯 Stack Trace:', e.error?.stack);
+      });
+      
+      // DOM debugging helper
+      window.debugDOM = function(selector) {
+        const elements = document.querySelectorAll(selector);
+        console.log('🔍 DOM Debug for "' + selector + '":', {
+          count: elements.length,
+          elements: Array.from(elements),
+          firstElement: elements[0] || null
+        });
+        return elements;
+      };
+      
+      // Additional debug mode conditions  
       if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
         window.DEBUG_MULTIPLAYER = true;
       }
       
-      // Initialize the GameEventBridge when DOM is ready
-      if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', function() {
+      // Error-resistant debug console initialization
+      function initializeDebugSystems() {
+        try {
+          // Initialize GameEventBridge if available
           if (!window.gameEvents && window.GameEventBridge) {
             window.gameEvents = new GameEventBridge(window.GAME_CONFIG);
-            console.log('GameEventBridge initialized:', window.gameEvents);
+            console.log('✅ GameEventBridge initialized:', window.gameEvents);
           }
-        });
-      } else {
-        // DOM already loaded
-        if (!window.gameEvents && window.GameEventBridge) {
-          window.gameEvents = new GameEventBridge(window.GAME_CONFIG);
-          console.log('GameEventBridge initialized:', window.gameEvents);
+          
+          // Initialize or create fallback debug console
+          if (!window.debugConsole) {
+            if (window.DebugConsole) {
+              window.debugConsole = new DebugConsole();
+              console.log('✅ Debug Console initialized');
+            } else {
+              // Fallback console if main script failed
+              window.debugConsole = createFallbackDebugConsole();
+              console.log('⚠️ Fallback Debug Console created');
+            }
+          }
+          
+          // Log initialization success
+          window.debugConsole?.addLog('SYSTEM', 'Multiplayer systems initialized', {
+            gameId: window.GAME_CONFIG?.gameId,
+            hasGameEvents: !!window.gameEvents,
+            timestamp: new Date().toISOString()
+          });
+          
+        } catch (error) {
+          console.error('❌ Failed to initialize debug systems:', error);
+          // Create minimal fallback
+          if (!window.debugConsole) {
+            window.debugConsole = createFallbackDebugConsole();
+          }
         }
       }
+      
+      // Fallback debug console for when main scripts fail
+      function createFallbackDebugConsole() {
+        return {
+          logs: [],
+          addLog: function(source, message, data) {
+            const entry = { 
+              timestamp: new Date().toLocaleTimeString(), 
+              source, message, data 
+            };
+            this.logs.unshift(entry);
+            console.log('🛠️ [' + entry.timestamp + '] [' + source + '] ' + message, data || '');
+            if (this.logs.length > 50) this.logs.pop();
+          },
+          show: function() { console.log('Fallback console - check browser console for logs'); }
+        };
+      }
+      
+      // Initialize when DOM is ready with multiple fallbacks
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initializeDebugSystems);
+      } else {
+        initializeDebugSystems();
+      }
+      
+      // Also try after a short delay in case of loading issues
+      setTimeout(initializeDebugSystems, 1000);
     </script>
   `;
   
