@@ -14,17 +14,26 @@ const TIMEOUT_LIMIT = 24000; // 24 seconds for AppSync (leaving buffer)
  * Main handler for processing game actions
  */
 exports.handler = async (event) => {
-  console.log('Universal Game Engine invoked:', JSON.stringify(event, null, 2));
+  const timestamp = new Date().toISOString();
+  console.log(`\n=== [${timestamp}] Universal Game Engine Invoked ===`);
+  console.log('📥 Raw Event:', JSON.stringify(event, null, 2));
   
   // Handle both direct invocation and AppSync resolver format
   const { gameId, action } = event.arguments || event;
   
+  console.log('🎮 Extracted Parameters:');
+  console.log('- Game ID:', gameId);
+  console.log('- Action Type:', typeof action);
+  console.log('- Action Data:', action);
+  
   if (!gameId || !action) {
-    return {
+    const error = {
       success: false,
       error: 'Missing required parameters: gameId and action',
       timestamp: Date.now()
     };
+    console.log('❌ Parameter validation failed:', error);
+    return error;
   }
   
   try {
@@ -57,17 +66,33 @@ exports.handler = async (event) => {
  * Process a game action with validation and state updates
  */
 async function processGameAction(gameId, action) {
-  console.log(`Processing action for game ${gameId}:`, action);
+  console.log(`\n🔄 Processing Action for Game: ${gameId}`);
+  console.log('📋 Action Details:', action);
+  
+  // Parse action data early for logging
+  const actionData = typeof action === 'string' ? JSON.parse(action) : action;
+  console.log('📊 Parsed Action Data:', {
+    type: actionData.type,
+    playerId: actionData.playerId,
+    dataKeys: actionData.data ? Object.keys(actionData.data) : 'none'
+  });
   
   // Load current game state
   const game = await loadGameState(gameId);
   
   if (!game) {
-    throw new Error(`Game ${gameId} not found`);
+    const error = `Game ${gameId} not found`;
+    console.log('❌', error);
+    throw new Error(error);
   }
   
-  // Parse action if it's a string
-  const actionData = typeof action === 'string' ? JSON.parse(action) : action;
+  console.log('🎯 Game Loaded Successfully:');
+  console.log('- Game Type:', game.gameType);
+  console.log('- Current Players:', Object.keys(game.players || {}));
+  console.log('- Game State Keys:', Object.keys(game.gameState || {}));
+  console.log('- Server Logic URL:', game.serverLogicUrl || 'none');
+  
+  // Use already parsed action data
   
   // Process the action
   const result = await processAction(game, actionData);
@@ -247,13 +272,23 @@ async function processGenericAction(game, currentState, action) {
  * Handle player joining
  */
 function handleJoin(game, currentState, playerId, data) {
-  console.log(`Player ${playerId} joining game ${game.gameId}`);
+  console.log(`\n👤 Player Join Request`);
+  console.log('- Player ID:', playerId);
+  console.log('- Game ID:', game.gameId);
+  console.log('- Player Data:', data);
   
   const players = game.players || {};
   const metadata = game.metadata || {};
   
+  console.log('📊 Current Game State:');
+  console.log('- Existing Players:', Object.keys(players));
+  console.log('- Player Count:', Object.keys(players).length);
+  console.log('- Game Type:', game.gameType);
+  console.log('- Max Players:', metadata.maxPlayers || 'default');
+  
   // Check if player already in game
   if (players[playerId]) {
+    console.log('⚠️ Player already exists in game:', players[playerId]);
     return {
       stateChanged: false,
       response: {
@@ -280,16 +315,22 @@ function handleJoin(game, currentState, playerId, data) {
   }
   
   // Add player
+  const newPlayerData = {
+    id: playerId,
+    joinedAt: Date.now(),
+    score: 0,
+    active: true,
+    ...data
+  };
+  
+  console.log('✅ Adding new player:', newPlayerData);
+  
   const updatedPlayers = {
     ...players,
-    [playerId]: {
-      id: playerId,
-      joinedAt: Date.now(),
-      score: 0,
-      active: true,
-      ...data
-    }
+    [playerId]: newPlayerData
   };
+  
+  console.log('🎮 Updated Players List:', Object.keys(updatedPlayers));
   
   // Update game state
   const updatedState = {
@@ -382,7 +423,13 @@ function handleStart(game, currentState, playerId, data) {
  * Handle player move
  */
 function handleMove(game, currentState, playerId, data) {
-  console.log(`Player ${playerId} making move in game ${game.gameId}`);
+  console.log(`\n🎯 Player Move Request`);
+  console.log('- Player ID:', playerId);
+  console.log('- Game ID:', game.gameId);
+  console.log('- Move Data:', data);
+  console.log('- Current Turn:', currentState.currentTurn);
+  console.log('- Game Active:', currentState.gameActive);
+  console.log('- Current Board:', currentState.board || 'none');
   
   if (!currentState.gameActive) {
     return {
@@ -410,6 +457,9 @@ function handleMove(game, currentState, playerId, data) {
   
   // For turn-based games, validate turn
   if (currentState.currentTurn && currentState.currentTurn !== playerId) {
+    console.log('❌ Turn validation failed:');
+    console.log('- Expected Player:', currentState.currentTurn);
+    console.log('- Actual Player:', playerId);
     return {
       stateChanged: false,
       response: {
@@ -419,6 +469,8 @@ function handleMove(game, currentState, playerId, data) {
       }
     };
   }
+  
+  console.log('✅ Turn validation passed');
   
   // Apply move to state
   const updatedState = {
@@ -443,6 +495,10 @@ function handleMove(game, currentState, playerId, data) {
   if (data.position !== undefined) {
     updatedState.board = currentState.board || {};
     updatedState.board[data.position] = playerId;
+    console.log('🎲 Board move applied:');
+    console.log('- Position:', data.position);
+    console.log('- Player:', playerId);
+    console.log('- Updated Board:', updatedState.board);
   }
   
   // Check for simple win conditions

@@ -1012,11 +1012,18 @@ function injectMultiplayerLibrary(html, gameId) {
   const libraryUrl = process.env.CF_DOMAIN
     ? `https://${process.env.CF_DOMAIN}/multiplayer-lib.js`
     : '/multiplayer-lib.js';
+    
+  const debugConsoleUrl = process.env.CF_DOMAIN
+    ? `https://${process.env.CF_DOMAIN}/debug-console.js`
+    : '/debug-console.js';
   
   // Create the script tags to inject
   const multiplayerScripts = `
     <!-- Multiplayer Event Bridge Library -->
     <script src="${libraryUrl}"></script>
+    
+    <!-- Debug Console for Development -->
+    <script src="${debugConsoleUrl}"></script>
     <script>
       // Game configuration for multiplayer
       window.GAME_CONFIG = {

@@ -116,6 +116,17 @@
       
       this._log(`Emitting ${type} event`, event);
       
+      // Enhanced logging for INTERACTION events
+      if (type === 'INTERACTION' && this.debug) {
+        console.log(`🎯 Player Interaction:`, {
+          player: this.playerId,
+          action: data.action,
+          target: data.target,
+          position: data.position,
+          gameId: this.gameId
+        });
+      }
+      
       // Notify local listeners
       this._notifyListeners(type, event);
       
@@ -515,7 +526,32 @@
      * @param {Object} state - New state data
      */
     _handleStateUpdate(state) {
-      this._notifyListeners('STATE_UPDATE', { state });
+      // Store previous state for comparison
+      const previousState = this._lastKnownState || {};
+      this._lastKnownState = state;
+      
+      // Enhanced logging with state comparison
+      this._logStateUpdate(previousState, state, 'Parent Frame');
+      
+      // Log specific game state information
+      if (this.debug) {
+        console.log('🎮 Game State Details:');
+        console.log('- Game Active:', state.gameActive);
+        console.log('- Current Turn:', state.currentTurn);
+        console.log('- Player Count:', state.playerCount);
+        console.log('- Move Count:', state.moveCount);
+        if (state.players) {
+          console.log('- Players:', Object.keys(state.players));
+          Object.keys(state.players).forEach(playerId => {
+            console.log(`  * ${playerId}:`, state.players[playerId]);
+          });
+        }
+        if (state.board) {
+          console.log('- Board State:', state.board);
+        }
+      }
+      
+      this._notifyListeners('STATE_UPDATE', { state, previousState });
     }
     
     /**
@@ -598,7 +634,7 @@
     }
     
     /**
-     * Log debug messages
+     * Log debug messages with enhanced formatting
      * @private
      * @param {string} message - Log message
      * @param {*} data - Additional data to log
@@ -610,8 +646,75 @@
       }
       
       if (this.debug) {
-        console.log(`[GameEventBridge] ${message}`, data || '');
+        const timestamp = new Date().toLocaleTimeString();
+        const gameInfo = `Game: ${this.gameId} | Player: ${this.playerId}`;
+        console.log(`[${timestamp}] [GameEventBridge] ${gameInfo} | ${message}`, data || '');
+        
+        // Add to debug console if available
+        if (window.debugConsole && window.debugConsole.addLog) {
+          window.debugConsole.addLog('MULTIPLAYER', `${message}`, data);
+        }
       }
+    }
+
+    /**
+     * Enhanced logging for state updates with detailed comparison
+     * @private
+     */
+    _logStateUpdate(oldState, newState, source) {
+      if (!this.debug) return;
+      
+      const changes = this._compareStates(oldState, newState);
+      if (changes.length > 0) {
+        console.group(`🔄 State Update from ${source}`);
+        console.log('Previous State:', oldState);
+        console.log('New State:', newState);
+        console.log('Changes Detected:', changes);
+        console.groupEnd();
+        
+        // Add to debug console
+        if (window.debugConsole && window.debugConsole.addStateUpdate) {
+          window.debugConsole.addStateUpdate(source, oldState, newState, changes);
+        }
+      }
+    }
+
+    /**
+     * Compare two states and return list of changes
+     * @private
+     */
+    _compareStates(oldState, newState) {
+      const changes = [];
+      
+      if (!oldState || !newState) {
+        changes.push({ type: 'complete_change', old: oldState, new: newState });
+        return changes;
+      }
+      
+      // Check for new/changed properties
+      for (const key in newState) {
+        if (JSON.stringify(oldState[key]) !== JSON.stringify(newState[key])) {
+          changes.push({
+            type: 'property_change',
+            property: key,
+            old: oldState[key],
+            new: newState[key]
+          });
+        }
+      }
+      
+      // Check for removed properties
+      for (const key in oldState) {
+        if (!(key in newState)) {
+          changes.push({
+            type: 'property_removed',
+            property: key,
+            old: oldState[key]
+          });
+        }
+      }
+      
+      return changes;
     }
     
     /**
